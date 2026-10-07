@@ -90,7 +90,8 @@
       ],
       "depends_on": [
         "U01",
-        "U02"
+        "U02",
+        "U05"
       ],
       "acceptance": "cargo test -p mhr_vector --features internals --test u07_quant",
       "stub_prefix": "U07 ",
@@ -104,7 +105,9 @@
       "scope": [
         "crates/mhr_vector/src/quant/int8.rs"
       ],
-      "depends_on": [],
+      "depends_on": [
+        "U05"
+      ],
       "acceptance": "cargo test -p mhr_vector --features internals --test u08_int8",
       "stub_prefix": "U08 ",
       "wave": 1,
@@ -117,7 +120,9 @@
       "scope": [
         "crates/mhr_vector/src/quant/binary.rs"
       ],
-      "depends_on": [],
+      "depends_on": [
+        "U05"
+      ],
       "acceptance": "cargo test -p mhr_vector --features internals --test u09_binary",
       "stub_prefix": "U09 ",
       "wave": 1,

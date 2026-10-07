@@ -30,8 +30,8 @@ machine-readable form (id, scope, `depends_on`, acceptance command, stub prefix,
   `mhr_vector_conform` checks, oracle and bench tests.
 - **Stay inside the dependency order.** A unit's code may call only units it depends on,
   directly or transitively. Calling anything else panics until that unit merges (its
-  stubs are `todo!`). U08 and U09 deliberately depend on nothing: keep their kernels
-  self-contained.
+  stubs are `todo!`). U07, U08 and U09 depend on U05 (they use its little-endian `f32s`
+  helpers, `format::f32s_*_le`); keep their kernels otherwise self-contained.
 
 Run a unit's tests from the repository root:
 

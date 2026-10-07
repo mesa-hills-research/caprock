@@ -511,10 +511,9 @@ angular sets (nytimes has 239) are dropped at conversion.
   - Adding a dependency is an owner decision. The gate refuses any change to `Cargo.toml`
     dependencies or a new package in `Cargo.lock`.
   - Never: `-sys` crates, build scripts that compile C or C++, FFI.
-  - **Owner decision pending**: whether to pre-approve a safe-API SIMD dispatch crate
-    (`pulp`) for the optimization phase. Without one, default builds autovectorize to the
-    baseline target (SSE2 on x86-64, NEON on aarch64), and `popcnt` and AVX2 are reached
-    only with `-C target-cpu`.
+  - **Owner decision (2026-10-07): `pulp` is approved**, a safe-API runtime SIMD dispatch
+    crate, for the optimization phase (prep adds it as a host commit). The store itself stays
+    `#![forbid(unsafe_code)]`.
 - **Portable.** Linux, macOS, Windows (std file locking, positional reads); no
   platform-specific code outside `format.rs` and `manifest.rs`.
 - **Rust 1.89** or later: `File::lock`/`try_lock`, let-chains, edition 2024.
