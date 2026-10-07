@@ -1,0 +1,15 @@
+[package]
+name = "mhr_vector_oracle"
+description = "The exact, deliberately simple brute-force oracle for mhr_vector: ground truth, checks and generators"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

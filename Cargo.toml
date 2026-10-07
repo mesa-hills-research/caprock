@@ -1,0 +1,29 @@
+[workspace]
+resolver = "3"
+members = ["crates/mhr_vector", "crates/mhr_vector_oracle", "crates/mhr_vector_bench"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "MIT OR Apache-2.0"
+publish = false
+
+# Every dependency is pure Rust with a safe API (no -sys crates, no build scripts
+# compiling C). Adding one is a reviewed decision: see REQUIREMENTS.md, "Dependencies".
+[workspace.dependencies]
+crc32fast = "1.4"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+thiserror = "2.0.12"
+# Dev and host tooling only.
+proptest = "1.6"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[profile.release]
+debug = "line-tables-only"   # perf profiles with symbols; no effect on speed
+
+[profile.test]
+opt-level = 2                # the oracle-backed tests scan many vectors
