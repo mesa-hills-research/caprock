@@ -14,6 +14,7 @@ internals = []
 
 [dependencies]
 crc32fast.workspace = true
+pulp = "0.22"
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
