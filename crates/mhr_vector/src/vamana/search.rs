@@ -165,7 +165,7 @@ pub fn beam_search<C: Codec>(
 mod tests {
     use super::*;
     use crate::config::Metric;
-    use crate::quant::F32Codec;
+    use crate::quant::{BinaryCodec, F32Codec};
     use crate::vamana::NO_NEIGHBOR;
 
     fn codec_and_codes(scores: &[f32]) -> (F32Codec, Vec<u8>) {
@@ -253,6 +253,70 @@ mod tests {
                 assert_eq!(&*visits.borrow(), previous);
             }
             previous = Some(visits.into_inner());
+        }
+    }
+
+    #[test]
+    fn binary_plateau_does_not_hide_a_lower_scoring_bridge() {
+        let dim = 64;
+        let codec = BinaryCodec::train(Metric::Cosine, dim, &[], 0).unwrap();
+        let width = codec.code_len();
+        let mut codes = vec![0; 6 * width];
+        for (node, negatives) in [32, 8, 12, 8, 10, 0].into_iter().enumerate() {
+            let mut vector = vec![0.125; dim];
+            vector[..negatives].fill(-0.125);
+            // Distinct sign patterns can have identical query estimates.
+            vector.rotate_left(node * 7);
+            codec.encode(&vector, &mut codes[node * width..(node + 1) * width]);
+        }
+        let query = codec.prepare(&vec![0.125; dim]);
+        let estimates: Vec<_> = codes
+            .chunks_exact(width)
+            .map(|code| codec.score(&query, code))
+            .collect();
+        assert_eq!(estimates[1], estimates[3]);
+        assert!(estimates[4] < estimates[1]);
+        assert!(estimates[4] > estimates[2]);
+        assert!(estimates[5] > estimates[1]);
+
+        // The tied estimates at 1 and 3 fill the best-beam pool. Keeping those
+        // settled nodes in the pending pool used to discard the worse bridge 4,
+        // making the best candidate 5 unreachable regardless of admission.
+        let graph = Graph {
+            degree: 2,
+            entry: 0,
+            adjacency: [
+                [1, 2],
+                [3, NO_NEIGHBOR],
+                [NO_NEIGHBOR; 2],
+                [4, NO_NEIGHBOR],
+                [5, NO_NEIGHBOR],
+                [NO_NEIGHBOR; 2],
+            ]
+            .concat(),
+        };
+        let mut scratch = SearchScratch::new();
+        for filtered in [false, true, false] {
+            let visits = std::cell::RefCell::new(Vec::new());
+            let found = beam_search(
+                &graph,
+                &codec,
+                &codes,
+                &query,
+                2,
+                2,
+                &|node| {
+                    visits.borrow_mut().push(node);
+                    !filtered || node == 5
+                },
+                &mut scratch,
+            );
+            let mut expected = vec![(estimates[5], 5)];
+            if !filtered {
+                expected.push((estimates[1], 1));
+            }
+            assert_eq!(found, expected);
+            assert_eq!(*visits.borrow(), [0, 1, 2, 3, 4, 5]);
         }
     }
 
