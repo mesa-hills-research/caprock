@@ -293,6 +293,126 @@ mod tests {
     }
 
     #[test]
+    fn default_int8_filtered_search_refines_an_already_full_shortlist() {
+        let k = 10;
+        let config = IndexConfig::new(2, Metric::Cosine);
+        let AnnKind::Vamana(params) = config.ann.kind else {
+            panic!("default int8 configuration must use Vamana");
+        };
+        let wanted = (k * config.rescore_factor as usize).max(config.rescore_min as usize);
+        let beam = (params.search_beam as usize).max(wanted);
+        let rejected = 4 * beam;
+        let bridge = rejected + wanted;
+        let best = bridge + 1..bridge + 1 + k;
+        let matching = (config.ann.filter_flat_below as usize + 1).max(wanted + 1 + k + 4 * beam);
+        let nodes = rejected + matching;
+
+        // A globally better rejected cluster supplies a full rescore shortlist
+        // of weak matches. Only expanding those matches reveals the bridge to
+        // the filtered optimum. A full-shortlist fallback cannot detect this
+        // failure, and neither the beam nor the rescore budget is overridden.
+        let vectors: Vec<f32> = (0..nodes)
+            .flat_map(|node| {
+                let x: f32 = if node < rejected {
+                    1.0
+                } else if node < bridge {
+                    0.4
+                } else if node == bridge {
+                    0.2
+                } else if best.contains(&node) {
+                    0.8
+                } else {
+                    0.0
+                };
+                [x, (1.0 - x * x).sqrt()]
+            })
+            .collect();
+        let codec = Int8Codec::train(Metric::Cosine, 2, &vectors, 0).unwrap();
+        let width = codec.code_len();
+        let mut codes = vec![0; nodes * width];
+        for (vector, code) in vectors
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .zip(codes.chunks_exact_mut(width))
+        {
+            codec.encode(vector, code);
+        }
+        let query = codec.prepare(&[1.0, 0.0]);
+        let mut rows = vec![[NO_NEIGHBOR; 2]; nodes];
+        for (node, row) in rows.iter_mut().enumerate() {
+            if node < rejected || (node >= bridge && node + 1 < nodes) {
+                row[0] = node as u32 + 1;
+            }
+            if node < wanted {
+                row[1] = (rejected + node) as u32;
+            }
+        }
+        rows[rejected][0] = bridge as u32;
+        let graph = Graph {
+            degree: 2,
+            entry: 0,
+            adjacency: rows.concat(),
+        };
+        let admit = |node: u32| node as usize >= rejected;
+        let mut flat: Vec<_> = codes
+            .chunks_exact(width)
+            .enumerate()
+            .filter(|&(node, _)| admit(node as u32))
+            .map(|(node, code)| (codec.score(&query, code), node as u32))
+            .collect();
+        flat.sort_unstable_by(estimate_order);
+        assert_eq!(
+            flat[..k]
+                .iter()
+                .map(|&(_, node)| node as usize)
+                .collect::<Vec<_>>(),
+            best.collect::<Vec<_>>()
+        );
+
+        let mut scratch = SearchScratch::new();
+        for _ in 0..2 {
+            let unfiltered = beam_search(
+                &graph,
+                &codec,
+                &codes,
+                &query,
+                beam,
+                wanted,
+                &admit,
+                &mut scratch,
+            );
+            assert_eq!(unfiltered.len(), wanted);
+            assert!(unfiltered.iter().all(|&(_, node)| (node as usize) < bridge));
+            let visits = std::cell::RefCell::new(vec![0; nodes]);
+            let found = filtered_beam_search(
+                &graph,
+                &codec,
+                &codes,
+                &query,
+                beam,
+                wanted,
+                &|node| {
+                    visits.borrow_mut()[node as usize] += 1;
+                    admit(node)
+                },
+                &mut scratch,
+            );
+            assert_eq!(found, flat[..wanted]);
+            let visits = visits.borrow();
+            assert!(visits.iter().all(|&count| count <= 1));
+            // Separate progress must not degenerate into exhaustive search of
+            // either the rejected routing cluster or the matching population.
+            assert!(visits[..rejected].contains(&0));
+            assert!(visits[rejected..].contains(&0));
+            for frontier in [&scratch.frontier, &scratch.matching_frontier] {
+                assert!(frontier.pending.len() <= beam);
+                assert!(frontier.best.len() <= beam);
+            }
+        }
+    }
+
+    #[test]
     fn filtered_frontiers_remain_bounded_and_handle_uniform_admission() {
         let nodes = 128u32;
         let graph = Graph {
