@@ -1,0 +1,10 @@
+{
+  "name": "smoke-score",
+  "description": "The score's mechanics on the small synthetic set (not the gate's workload).",
+  "parts": [
+    {"dataset": "synth-small", "config": "vamana-int8", "k": 10, "queries": 200, "recall_target": 0.95}
+  ],
+  "build": {"threads": 4, "budget": 536870912, "batch": 5000, "commit_every": 10000},
+  "timed_repeats": 3,
+  "recall_threads": 4
+}

@@ -1,0 +1,26 @@
+{
+  "name": "full-v1",
+  "description": "The milestone suite (end of each phase, and the final report): every dataset at full size, filters, updates, warm and cold opens, scale and memory bounds. Hours on the box; run it with --keep only when disk allows.",
+  "parts": [
+    {"dataset": "dbp3l-1024", "queries": 2000, "config": "vamana-int8", "k": 10, "filters": ["p50", "p10", "p01", "p001", "go", "p10-python", "p01-or-p001"], "open": true},
+    {"dataset": "dbp3l-1024", "queries": 2000, "config": "vamana-binary", "k": 10, "open": true},
+    {"dataset": "dbp3l-1024", "queries": 2000, "config": "flat-int8", "k": 10},
+    {"dataset": "dbp3l-1024", "queries": 2000, "config": "vamana-int8", "k": 50},
+    {"dataset": "dbp3l-1536", "queries": 2000, "config": "vamana-int8", "k": 10},
+    {"dataset": "dbp3l-256", "queries": 2000, "config": "vamana-int8", "k": 10},
+    {"dataset": "dbp3l-1024", "base": 500000, "queries": 1000, "config": "vamana-int8", "k": 10, "updates": true},
+    {"dataset": "code-voyage4-1024", "queries": 1000, "config": "vamana-int8", "k": 10, "filters": ["path:ripgrep", "path:fmt/include", "lang:python", "lang:java"], "open": true},
+    {"dataset": "code-voyage4-1024", "queries": 1000, "config": "flat-int8", "k": 10},
+    {"dataset": "code-voyage4-1024", "queries": 1000, "config": "vamana-binary", "k": 10},
+    {"dataset": "code-voyage4-1024", "queries": 1000, "config": "exact", "k": 10},
+    {"dataset": "glove-100-angular", "queries": 2000, "config": "vamana-int8", "k": 10, "open": true},
+    {"dataset": "nytimes-256-angular", "queries": 2000, "config": "vamana-int8", "k": 10},
+    {"dataset": "sift-128-euclidean", "queries": 2000, "config": "vamana-int8", "k": 10},
+    {"dataset": "synth-1024-6m", "queries": 1000, "config": "vamana-int8", "k": 10, "filters": ["p10", "p001"], "open": true}
+  ],
+  "build": {"threads": 32, "budget": 4294967296, "batch": 20000, "commit_every": 500000},
+  "timed_repeats": 3,
+  "recall_threads": 16,
+  "qps_threads": [1, 8, 32],
+  "beams": [16, 32, 48, 64, 96, 128, 192, 256]
+}
