@@ -1,0 +1,25 @@
+[package]
+name = "mhr_vector"
+description = "A pure-Rust, safe-Rust vector store for code search: exact and Vamana-graph search, int8 and binary codes with full-precision rescoring, crash-safe segments"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# Re-exports the internal unit modules under `mhr_vector::__internals` for the host's
+# per-unit acceptance tests (tests/uNN_*.rs). Not a public API.
+internals = []
+
+[dependencies]
+crc32fast.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+mhr_vector_oracle = { path = "../mhr_vector_oracle" }
+
+[lints]
+workspace = true
