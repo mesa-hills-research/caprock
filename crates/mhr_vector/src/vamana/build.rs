@@ -11,6 +11,7 @@ use crate::config::{Metric, VamanaParams};
 use crate::error::{Error, Result};
 use crate::quant::Codec;
 use crate::util::{Bitset, SplitMix64};
+use crate::vamana::search::Frontier;
 use crate::vamana::{Graph, NO_NEIGHBOR};
 
 /// Builds a graph over the `codes.len() / codec.code_len()` codes, with
@@ -197,13 +198,13 @@ impl<C: Codec> CodeSpace<'_, C> {
             .map(|id| Candidate {
                 score: self.score(node, id),
                 node: id,
-                expanded: false,
+                occluded: false,
             })
             .collect();
         ranked.sort_unstable_by(Candidate::compare);
         let mut selected = Vec::with_capacity(degree);
         for i in 0..ranked.len() {
-            if ranked[i].expanded {
+            if ranked[i].occluded {
                 continue;
             }
             let chosen = ranked[i].node;
@@ -212,11 +213,11 @@ impl<C: Codec> CodeSpace<'_, C> {
                 break;
             }
             for candidate in &mut ranked[i + 1..] {
-                if !candidate.expanded
+                if !candidate.occluded
                     && alpha * self.distance(chosen, candidate.node)
                         <= self.distance_from_score(candidate.score)
                 {
-                    candidate.expanded = true;
+                    candidate.occluded = true;
                 }
             }
         }
@@ -227,7 +228,7 @@ impl<C: Codec> CodeSpace<'_, C> {
 struct Candidate {
     score: f32,
     node: u32,
-    expanded: bool,
+    occluded: bool,
 }
 
 impl Candidate {
@@ -247,7 +248,7 @@ impl Candidate {
 struct BuildScratch {
     seen: Bitset,
     touched: Vec<u32>,
-    beam: Vec<Candidate>,
+    frontier: Frontier,
     expanded: Vec<u32>,
 }
 
@@ -256,7 +257,7 @@ impl BuildScratch {
         Self {
             seen: Bitset::new(nodes),
             touched: Vec::new(),
-            beam: Vec::new(),
+            frontier: Frontier::default(),
             expanded: Vec::new(),
         }
     }
@@ -271,40 +272,20 @@ impl BuildScratch {
         for id in self.touched.drain(..) {
             self.seen.clear(id as usize);
         }
-        self.beam.clear();
+        self.frontier.reset(beam);
         self.expanded.clear();
         self.seen.set(graph.entry as usize);
         self.touched.push(graph.entry);
-        self.beam.push(Candidate {
-            score: space.score(node, graph.entry),
-            node: graph.entry,
-            expanded: false,
-        });
-        while let Some(index) = self.beam.iter().position(|candidate| !candidate.expanded) {
-            let current = self.beam[index].node;
-            self.beam[index].expanded = true;
+        self.frontier
+            .offer((space.score(node, graph.entry), graph.entry));
+        while let Some(current) = self.frontier.pop() {
             self.expanded.push(current);
             for &neighbor in graph.neighbors(current) {
                 if !self.seen.set(neighbor as usize) {
                     continue;
                 }
                 self.touched.push(neighbor);
-                let candidate = Candidate {
-                    score: space.score(node, neighbor),
-                    node: neighbor,
-                    expanded: false,
-                };
-                if self.beam.len() == beam
-                    && candidate.compare(self.beam.last().unwrap()) != Ordering::Less
-                {
-                    continue;
-                }
-                let position = self
-                    .beam
-                    .binary_search_by(|other| other.compare(&candidate))
-                    .unwrap_or_else(|position| position);
-                self.beam.insert(position, candidate);
-                self.beam.truncate(beam);
+                self.frontier.offer((space.score(node, neighbor), neighbor));
             }
         }
         let mut candidates = self.expanded.clone();
@@ -557,11 +538,50 @@ mod tests {
     }
 
     #[test]
+    fn construction_search_also_expands_a_lower_scoring_bridge() {
+        let codec = F32Codec {
+            metric: Metric::Dot,
+            dim: 1,
+        };
+        let codes: Vec<_> = [0.0f32, 10.0, 8.0, 11.0, 9.0, 20.0, 1.0]
+            .into_iter()
+            .flat_map(f32::to_le_bytes)
+            .collect();
+        let space = CodeSpace {
+            codec: &codec,
+            codes: &codes,
+            width: codec.code_len(),
+            metric: Metric::Dot,
+            dot_shift: 400.0,
+        };
+        let graph = Graph {
+            degree: 2,
+            entry: 0,
+            adjacency: [
+                [1, 2],
+                [3, NO_NEIGHBOR],
+                [NO_NEIGHBOR; 2],
+                [4, NO_NEIGHBOR],
+                [5, NO_NEIGHBOR],
+                [NO_NEIGHBOR; 2],
+                [NO_NEIGHBOR; 2],
+            ]
+            .concat(),
+        };
+        let mut scratch = BuildScratch::new(graph.len());
+        for _ in 0..2 {
+            let candidates = scratch.search(&space, &graph, 6, 2);
+            assert!(candidates.contains(&5));
+            assert_eq!(space.prune(6, candidates, 2, 1.2)[0], 5);
+        }
+    }
+
+    #[test]
     fn score_order_does_not_collapse_dots_or_distinguish_signed_zero() {
         let candidate = |score, node| Candidate {
             score,
             node,
-            expanded: false,
+            occluded: false,
         };
         assert_eq!(
             candidate(-0.0, 0).compare(&candidate(0.0, 1)),
