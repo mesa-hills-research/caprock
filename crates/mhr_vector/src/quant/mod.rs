@@ -17,7 +17,10 @@ pub use binary::BinaryCodec;
 pub use int8::Int8Codec;
 
 use crate::config::{CodeKind, Metric};
-use crate::error::Result;
+use crate::distance;
+use crate::error::{Error, Result};
+use crate::format::f32s_from_le;
+use crate::util::SplitMix64;
 
 /// Most vectors a codec trains on.
 pub const MAX_TRAINING_VECTORS: usize = 65_536;
@@ -51,6 +54,13 @@ pub struct F32Codec {
     pub dim: usize,
 }
 
+impl F32Codec {
+    fn decode(&self, code: &[u8]) -> Vec<f32> {
+        assert_eq!(code.len(), self.code_len(), "f32 code length mismatch");
+        f32s_from_le(code).expect("f32 code length is a multiple of four")
+    }
+}
+
 impl Codec for F32Codec {
     type Query = Vec<f32>;
 
@@ -67,29 +77,36 @@ impl Codec for F32Codec {
     }
 
     fn code_len(&self) -> usize {
-        todo!("U07 quant: F32Codec::code_len")
+        self.dim.checked_mul(4).expect("f32 code length overflow")
     }
 
     fn encode(&self, vector: &[f32], out: &mut [u8]) {
-        todo!("U07 quant: F32Codec::encode")
+        assert_eq!(vector.len(), self.dim, "f32 vector dimension mismatch");
+        assert_eq!(out.len(), self.code_len(), "f32 code length mismatch");
+        for (&value, bytes) in vector.iter().zip(out.as_chunks_mut::<4>().0) {
+            *bytes = value.to_le_bytes();
+        }
     }
 
     fn prepare(&self, query: &[f32]) -> Vec<f32> {
-        todo!("U07 quant: F32Codec::prepare")
+        assert_eq!(query.len(), self.dim, "f32 query dimension mismatch");
+        // Queries are already in stored form; normalizing again would change bits.
+        query.to_vec()
     }
 
     /// The canonical score of the decoded vector.
     fn score(&self, query: &Vec<f32>, code: &[u8]) -> f32 {
-        todo!("U07 quant: F32Codec::score")
+        assert_eq!(query.len(), self.dim, "f32 query dimension mismatch");
+        distance::score(self.metric, query, &self.decode(code))
     }
 
     fn score_codes(&self, a: &[u8], b: &[u8]) -> f32 {
-        todo!("U07 quant: F32Codec::score_codes")
+        distance::score(self.metric, &self.decode(a), &self.decode(b))
     }
 
     /// Empty: the metric and dimension come from the index configuration.
     fn to_bytes(&self) -> Vec<u8> {
-        todo!("U07 quant: F32Codec::to_bytes")
+        Vec::new()
     }
 }
 
@@ -124,29 +141,56 @@ impl AnyCodec {
         sample: &[f32],
         seed: u64,
     ) -> Result<AnyCodec> {
-        todo!("U07 quant: AnyCodec::train")
+        if !(1..=crate::MAX_DIM as usize).contains(&dim) {
+            return Err(Error::InvalidArgument(format!(
+                "codec dimension must be in 1..={}",
+                crate::MAX_DIM
+            )));
+        }
+        if !sample.len().is_multiple_of(dim) || sample.len() / dim > MAX_TRAINING_VECTORS {
+            return Err(Error::InvalidArgument(format!(
+                "codec sample must contain at most {MAX_TRAINING_VECTORS} complete vectors"
+            )));
+        }
+        match kind {
+            CodeKind::F32 => Ok(AnyCodec::F32(F32Codec { metric, dim })),
+            CodeKind::Int8 => Int8Codec::train(metric, dim, sample, seed).map(AnyCodec::Int8),
+            CodeKind::Binary => BinaryCodec::train(metric, dim, sample, seed).map(AnyCodec::Binary),
+        }
     }
 
     /// The codec saved as `bytes` by [`Codec::to_bytes`]. `Corrupt`-style errors are
     /// reported as `Error::Corrupt` with an empty path (the caller adds context).
     pub fn from_bytes(kind: CodeKind, metric: Metric, dim: usize, bytes: &[u8]) -> Result<AnyCodec> {
-        todo!("U07 quant: AnyCodec::from_bytes")
+        if !(1..=crate::MAX_DIM as usize).contains(&dim) {
+            return Err(Error::corrupt("", "codec dimension is out of range"));
+        }
+        match kind {
+            CodeKind::F32 => {
+                if !bytes.is_empty() {
+                    return Err(Error::corrupt("", "f32 codec parameters must be empty"));
+                }
+                Ok(AnyCodec::F32(F32Codec { metric, dim }))
+            }
+            CodeKind::Int8 => Int8Codec::from_bytes(metric, dim, bytes).map(AnyCodec::Int8),
+            CodeKind::Binary => BinaryCodec::from_bytes(metric, dim, bytes).map(AnyCodec::Binary),
+        }
     }
 
     pub fn kind(&self) -> CodeKind {
-        todo!("U07 quant: AnyCodec::kind")
+        with_codec!(self, codec => codec.kind())
     }
 
     pub fn code_len(&self) -> usize {
-        todo!("U07 quant: AnyCodec::code_len")
+        with_codec!(self, codec => codec.code_len())
     }
 
     pub fn encode(&self, vector: &[f32], out: &mut [u8]) {
-        todo!("U07 quant: AnyCodec::encode")
+        with_codec!(self, codec => codec.encode(vector, out))
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
-        todo!("U07 quant: AnyCodec::to_bytes")
+        with_codec!(self, codec => codec.to_bytes())
     }
 }
 
@@ -154,5 +198,90 @@ impl AnyCodec {
 /// `n <= MAX_TRAINING_VECTORS`, otherwise `MAX_TRAINING_VECTORS` rows chosen by
 /// `SplitMix64::new(seed).sample(n, MAX_TRAINING_VECTORS)`. Sorted.
 pub fn training_sample(n: usize, seed: u64) -> Vec<usize> {
-    todo!("U07 quant: training_sample")
+    if n <= MAX_TRAINING_VECTORS {
+        return (0..n).collect();
+    }
+    SplitMix64::new(seed)
+        .sample(n as u64, MAX_TRAINING_VECTORS)
+        .into_iter()
+        .map(|row| row as usize)
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn f32_preserves_stored_bits_and_does_not_normalize_queries_again() {
+        let vector = [-0.0, f32::MIN_POSITIVE, f32::from_bits(1), -1.25, 1e15];
+        let codec = F32Codec {
+            metric: Metric::Cosine,
+            dim: vector.len(),
+        };
+        let query = codec.prepare(&vector);
+        assert_eq!(
+            query.iter().map(|x| x.to_bits()).collect::<Vec<_>>(),
+            vector.iter().map(|x| x.to_bits()).collect::<Vec<_>>()
+        );
+        let mut code = vec![0; codec.code_len()];
+        codec.encode(&vector, &mut code);
+        assert_eq!(code, crate::format::f32s_to_le(&vector));
+        assert_eq!(
+            codec.score(&query, &code).to_bits(),
+            distance::score(codec.metric, &vector, &vector).to_bits()
+        );
+    }
+
+    #[test]
+    fn f32_dispatch_round_trips_configuration_and_rejects_bad_parameters() {
+        for metric in [Metric::Cosine, Metric::Dot, Metric::L2] {
+            for dim in [1, 15, 16, 17, crate::MAX_DIM as usize] {
+                // F32 has no trained parameters and can use an empty sample.
+                let codec = AnyCodec::train(CodeKind::F32, metric, dim, &[], 99).unwrap();
+                assert_eq!(
+                    AnyCodec::from_bytes(CodeKind::F32, metric, dim, &codec.to_bytes()).unwrap(),
+                    codec
+                );
+                assert!(matches!(
+                    AnyCodec::from_bytes(CodeKind::F32, metric, dim, &[0]),
+                    Err(Error::Corrupt { path, .. }) if path.as_os_str().is_empty()
+                ));
+            }
+        }
+        for dim in [0, crate::MAX_DIM as usize + 1, usize::MAX] {
+            assert!(matches!(
+                AnyCodec::train(CodeKind::F32, Metric::Dot, dim, &[], 0),
+                Err(Error::InvalidArgument(_))
+            ));
+            assert!(matches!(
+                AnyCodec::from_bytes(CodeKind::F32, Metric::Dot, dim, &[]),
+                Err(Error::Corrupt { path, .. }) if path.as_os_str().is_empty()
+            ));
+        }
+        for (dim, sample) in [(2, vec![1.0; 3]), (1, vec![1.0; MAX_TRAINING_VECTORS + 1])] {
+            assert!(matches!(
+                AnyCodec::train(CodeKind::F32, Metric::Dot, dim, &sample, 0),
+                Err(Error::InvalidArgument(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn f32_kernels_reject_mismatched_lengths() {
+        let codec = F32Codec {
+            metric: Metric::Dot,
+            dim: 2,
+        };
+        assert!(std::panic::catch_unwind(|| codec.prepare(&[1.0])).is_err());
+        assert!(std::panic::catch_unwind(|| codec.encode(&[1.0], &mut [0; 8])).is_err());
+        assert!(std::panic::catch_unwind(|| codec.encode(&[1.0; 2], &mut [0; 7])).is_err());
+        assert!(std::panic::catch_unwind(|| codec.score(&vec![1.0], &[0; 8])).is_err());
+        for len in [0, 4, 7, 9, 12] {
+            let code = vec![0; len];
+            assert!(std::panic::catch_unwind(|| codec.score(&vec![1.0; 2], &code)).is_err());
+            assert!(std::panic::catch_unwind(|| codec.score_codes(&code, &[0; 8])).is_err());
+            assert!(std::panic::catch_unwind(|| codec.score_codes(&[0; 8], &code)).is_err());
+        }
+    }
 }
