@@ -17,7 +17,7 @@ pub use cache::{CacheStats, EmbeddingCache};
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 
 /// SHA-256 (or any 32-byte digest the caller fixes) of the exact text sent to the model
 /// (arko_index's rendered chunk: header plus source). The caller computes it.
@@ -89,7 +89,13 @@ impl EmbeddingModel {
     /// type, output type, text format or revision differs. (A different query input
     /// type, or `normalized`, does not change stored vectors.)
     pub fn requires_reembed(&self, other: &EmbeddingModel) -> bool {
-        todo!("U19 embedding: EmbeddingModel::requires_reembed")
+        self.provider != other.provider
+            || self.model != other.model
+            || self.dimensions != other.dimensions
+            || self.document_input != other.document_input
+            || self.output_dtype != other.output_dtype
+            || self.text_format != other.text_format
+            || self.revision != other.revision
     }
 
     /// A stable, file-name-safe identity of the document vectors:
@@ -99,13 +105,53 @@ impl EmbeddingModel {
     /// [`requires_reembed`](Self::requires_reembed) the other (unless replaced bytes
     /// collide, which callers avoid by using plain names).
     pub fn document_fingerprint(&self) -> String {
-        todo!("U19 embedding: EmbeddingModel::document_fingerprint")
+        let mut name = format!(
+            "{}-{}-{}-{}-{}-{}",
+            self.provider,
+            self.model,
+            self.dimensions,
+            self.output_dtype,
+            self.document_input.as_deref().unwrap_or("none"),
+            self.text_format,
+        );
+        if let Some(revision) = &self.revision {
+            name.push('-');
+            name.push_str(revision);
+        }
+        name.bytes()
+            .map(|b| {
+                if b.is_ascii_alphanumeric() || b"._-".contains(&b) {
+                    char::from(b)
+                } else {
+                    '_'
+                }
+            })
+            .collect()
     }
 
     /// Checks the fields: non-empty provider, model, dtype and text format (at most 128
     /// bytes each), dimensions in `1..=MAX_DIM`. `InvalidConfig` otherwise.
     pub fn validate(&self) -> Result<()> {
-        todo!("U19 embedding: EmbeddingModel::validate")
+        for (field, value) in [
+            ("provider", &self.provider),
+            ("model", &self.model),
+            ("output_dtype", &self.output_dtype),
+            ("text_format", &self.text_format),
+        ] {
+            if value.is_empty() || value.len() > 128 {
+                return Err(Error::InvalidConfig(format!(
+                    "embedding {field} must contain 1..=128 bytes"
+                )));
+            }
+        }
+        if !(1..=crate::MAX_DIM).contains(&self.dimensions) {
+            return Err(Error::InvalidConfig(format!(
+                "embedding dimensions {} not in 1..={}",
+                self.dimensions,
+                crate::MAX_DIM,
+            )));
+        }
+        Ok(())
     }
 }
 
