@@ -217,8 +217,8 @@ fn search<C: Codec>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Metric;
-    use crate::quant::{BinaryCodec, F32Codec};
+    use crate::config::{AnnKind, IndexConfig, Metric};
+    use crate::quant::{BinaryCodec, F32Codec, Int8Codec};
     use crate::vamana::NO_NEIGHBOR;
 
     fn codec_and_codes(scores: &[f32]) -> (F32Codec, Vec<u8>) {
@@ -516,6 +516,101 @@ mod tests {
             }
             assert_eq!(found, expected);
             assert_eq!(*visits.borrow(), [0, 1, 2, 3, 4, 5]);
+        }
+    }
+
+    #[test]
+    fn int8_k50_rescore_pool_does_not_block_routes_to_better_neighbors() {
+        let k = 50;
+        let config = IndexConfig::new(2, Metric::Cosine);
+        let AnnKind::Vamana(params) = config.ann.kind else {
+            panic!("default int8 configuration must use Vamana");
+        };
+        let wanted = (k * config.rescore_factor as usize).max(config.rescore_min as usize);
+        assert_eq!(wanted, 200);
+        let nodes = wanted + 1 + k + 3 * wanted;
+
+        // Fill the entire rescore-sized progress pool with a local plateau.
+        // Its last node leads through a worse bridge to all fifty exact nearest
+        // neighbors. Retaining settled nodes in the pending pool rejects that
+        // bridge even though the result list already has `wanted` candidates.
+        let vectors: Vec<f32> = (0..nodes)
+            .flat_map(|node| {
+                let x: f32 = if node < wanted {
+                    0.75
+                } else if node == wanted {
+                    0.5
+                } else if node <= wanted + k {
+                    1.0
+                } else {
+                    0.0
+                };
+                [x, (1.0 - x * x).sqrt()]
+            })
+            .collect();
+        let codec = Int8Codec::train(Metric::Cosine, 2, &vectors, 0).unwrap();
+        let width = codec.code_len();
+        let mut codes = vec![0; nodes * width];
+        for (vector, code) in vectors
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .zip(codes.chunks_exact_mut(width))
+        {
+            codec.encode(vector, code);
+        }
+        let query = codec.prepare(&[1.0, 0.0]);
+        let graph = Graph {
+            degree: 2,
+            entry: 0,
+            adjacency: (0..nodes as u32)
+                .flat_map(|node| {
+                    let next = if node + 1 < nodes as u32 {
+                        node + 1
+                    } else {
+                        NO_NEIGHBOR
+                    };
+                    [next, if node == 0 { NO_NEIGHBOR } else { 0 }]
+                })
+                .collect(),
+        };
+        let mut flat: Vec<_> = codes
+            .chunks_exact(width)
+            .enumerate()
+            .map(|(node, code)| (codec.score(&query, code), node as u32))
+            .collect();
+        flat.sort_unstable_by(estimate_order);
+        let exact_top: Vec<_> = (wanted as u32 + 1..=wanted as u32 + k as u32).collect();
+        assert_eq!(
+            flat[..k].iter().map(|&(_, node)| node).collect::<Vec<_>>(),
+            exact_top
+        );
+
+        let mut scratch = SearchScratch::new();
+        for beam in [params.search_beam as usize, 32, 64, 128, 256, 0] {
+            let visits = std::cell::RefCell::new(vec![0; nodes]);
+            let found = beam_search(
+                &graph,
+                &codec,
+                &codes,
+                &query,
+                beam,
+                wanted,
+                &|node| {
+                    visits.borrow_mut()[node as usize] += 1;
+                    true
+                },
+                &mut scratch,
+            );
+            assert_eq!(found, flat[..wanted]);
+            // Recover the entire rescore shortlist without turning this into a
+            // flat scan. Cyclic edges must not cause repeated codec evaluations.
+            let visits = visits.borrow();
+            assert!(visits.iter().all(|&count| count <= 1));
+            assert!(visits.contains(&0));
+            assert!(exact_top.iter().all(|&node| visits[node as usize] == 1));
+            assert!(scratch.frontier.pending.len() <= beam.max(wanted));
+            assert!(scratch.frontier.best.len() <= beam.max(wanted));
         }
     }
 
