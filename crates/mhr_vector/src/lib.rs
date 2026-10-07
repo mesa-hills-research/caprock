@@ -42,15 +42,6 @@
 //! ```
 
 #![forbid(unsafe_code)]
-// Skeleton phase: stub bodies leave parameters and helpers unused. The host removes this
-// line when the build phase ends (UNITS.md, "End of the build phase").
-#![allow(
-    unused_variables,
-    dead_code,
-    unreachable_code,
-    unused_imports,
-    unused_macros
-)]
 
 pub mod config;
 pub mod distance;
