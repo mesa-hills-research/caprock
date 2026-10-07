@@ -20,14 +20,16 @@ mod search;
 mod snapshot;
 mod writer;
 
+use std::collections::BTreeSet;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 
 use crate::config::{IndexConfig, StoreOptions};
 use crate::delta::{Delta, DeltaView};
 use crate::manifest::{IndexLock, Manifest};
 use crate::merge::MergePlan;
-use crate::segment::{Segment, SegmentInfo};
+use crate::segment::Segment;
 use crate::tombstones::Tombstones;
 
 /// The single writer of an index directory.
@@ -36,19 +38,46 @@ pub struct Writer {
     dir: PathBuf,
     config: Arc<IndexConfig>,
     options: StoreOptions,
-    lock: IndexLock,
+    state: Arc<WriterState>,
     /// The last committed generation, and the one before it.
     committed: Manifest,
     previous: Option<Manifest>,
     delta: Delta,
     /// Current segments, oldest first (committed and not yet committed).
     segments: Vec<SegmentHandle>,
-    next_segment_id: u64,
+    max_segment_vectors: u64,
+    /// Includes replaced/deleted delta allocations, bounding append-only storage.
+    delta_appended: u64,
     version: u64,
     /// Bumped whenever the segment list is replaced (stale-job detection).
     epoch: u64,
     /// The slot in-process readers follow.
     published: Arc<Mutex<Snapshot>>,
+}
+
+/// Shared with jobs so IDs cannot collide and GC cannot unlink an active build.
+/// Keeping the lock alive also prevents a job outliving its writer from racing a reopen.
+#[derive(Debug)]
+struct WriterState {
+    _lock: IndexLock,
+    next_segment_id: AtomicU64,
+    reservations: Mutex<BTreeSet<u64>>,
+}
+
+#[derive(Debug)]
+struct JobReservation {
+    id: u64,
+    owner: Arc<WriterState>,
+}
+
+impl Drop for JobReservation {
+    fn drop(&mut self) {
+        self.owner
+            .reservations
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&self.id);
+    }
 }
 
 /// A segment in the writer, with its current deletions.
@@ -108,6 +137,7 @@ pub struct MaintenanceJob {
     config: Arc<IndexConfig>,
     options: StoreOptions,
     epoch: u64,
+    reservation: JobReservation,
 }
 
 /// The result of [`MaintenanceJob::run`], to install.
@@ -115,6 +145,7 @@ pub struct MaintenanceJob {
 pub struct BuiltSegment {
     plan: MergePlan,
     inputs: Vec<(Arc<Segment>, Tombstones)>,
-    info: SegmentInfo,
+    output: Option<Arc<Segment>>,
     epoch: u64,
+    reservation: JobReservation,
 }
