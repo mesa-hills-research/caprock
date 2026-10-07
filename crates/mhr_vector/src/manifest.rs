@@ -153,7 +153,10 @@ pub fn read_current(dir: &Path) -> Result<Option<Manifest>> {
     let manifest: Manifest = serde_json::from_slice(&bytes)
         .map_err(|e| Error::corrupt(&path, format!("invalid manifest: {e}")))?;
     if manifest.generation != generation {
-        return Err(Error::corrupt(&path, "manifest generation differs from its name"));
+        return Err(Error::corrupt(
+            &path,
+            "manifest generation differs from its name",
+        ));
     }
     for segment in &manifest.segments {
         if segment.file != segment_file_name(segment.id) {
@@ -344,10 +347,13 @@ mod tests {
             "gen-é0000000000000000001.json",
         ] {
             fs::write(&current_path, name).unwrap();
-            assert!(matches!(
-                read_current(&dir.0),
-                Err(Error::Corrupt { path, .. }) if path == current_path
-            ), "{name:?}");
+            assert!(
+                matches!(
+                    read_current(&dir.0),
+                    Err(Error::Corrupt { path, .. }) if path == current_path
+                ),
+                "{name:?}"
+            );
         }
         fs::write(&current_path, [0xff]).unwrap();
         assert!(matches!(read_current(&dir.0), Err(Error::Corrupt { .. })));
@@ -358,7 +364,10 @@ mod tests {
         fs::write(&path, br#"{"format_version":2,"future_schema":true}"#).unwrap();
         assert!(matches!(
             read_current(&dir.0),
-            Err(Error::UnsupportedFormat { found: 2, supported: FORMAT_VERSION })
+            Err(Error::UnsupportedFormat {
+                found: 2,
+                supported: FORMAT_VERSION
+            })
         ));
         fs::write(&path, serde_json::to_vec(&empty_manifest(2)).unwrap()).unwrap();
         assert!(matches!(
@@ -393,7 +402,10 @@ mod tests {
         assert!(publish(&dir.0, &second).is_err());
         assert_eq!(read_current(&dir.0).unwrap(), Some(first.clone()));
         assert!(dir.0.join(&second_name).exists());
-        assert_eq!(garbage(&dir.0, &first, None).unwrap(), vec![dir.0.join(&second_name)]);
+        assert_eq!(
+            garbage(&dir.0, &first, None).unwrap(),
+            vec![dir.0.join(&second_name)]
+        );
         fs::remove_dir(blocked).unwrap();
         publish(&dir.0, &second).unwrap();
         assert_eq!(read_current(&dir.0).unwrap(), Some(second));
@@ -405,7 +417,10 @@ mod tests {
         let current = empty_manifest(7);
         publish(&dir.0, &current).unwrap();
         for name in [
-            "notes.txt", "LOCK", "seg-1.mhrv", "gen-1.json",
+            "notes.txt",
+            "LOCK",
+            "seg-1.mhrv",
+            "gen-1.json",
             "seg-00000000000000000001.mhrv.backup",
             "seg-99999999999999999999.mhrv",
             "del-00000000000000000001-00000000000000000001.bits.extra",
@@ -417,9 +432,15 @@ mod tests {
         fs::create_dir(dir.0.join("directory.tmp")).unwrap();
         fs::create_dir(dir.0.join(segment_file_name(2))).unwrap();
         let mut wanted: Vec<_> = [
-            manifest_file_name(0), segment_file_name(u64::MAX),
-            tombstone_file_name(0, u64::MAX), "notes.tmp".into(), "CURRENT.tmp".into(),
-        ].into_iter().map(|name| dir.0.join(name)).collect();
+            manifest_file_name(0),
+            segment_file_name(u64::MAX),
+            tombstone_file_name(0, u64::MAX),
+            "notes.tmp".into(),
+            "CURRENT.tmp".into(),
+        ]
+        .into_iter()
+        .map(|name| dir.0.join(name))
+        .collect();
         for path in &wanted {
             fs::write(path, b"garbage").unwrap();
         }
@@ -434,9 +455,15 @@ mod tests {
         fs::write(&path, b"existing lock file").unwrap();
         let first = IndexLock::acquire(&dir.0).unwrap();
         std::thread::scope(|scope| {
-            scope.spawn(|| {
-                assert!(matches!(IndexLock::acquire(&dir.0), Err(Error::Locked { .. })));
-            }).join().unwrap();
+            scope
+                .spawn(|| {
+                    assert!(matches!(
+                        IndexLock::acquire(&dir.0),
+                        Err(Error::Locked { .. })
+                    ));
+                })
+                .join()
+                .unwrap();
         });
         assert_eq!(fs::read(&path).unwrap(), b"existing lock file");
         drop(first);
