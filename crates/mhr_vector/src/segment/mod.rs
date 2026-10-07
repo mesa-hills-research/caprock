@@ -18,6 +18,7 @@ use crate::quant::AnyCodec;
 use crate::topk::KeyLookup;
 use crate::vamana::Graph;
 
+mod reading;
 mod writing;
 
 // Info deliberately excludes build resources (threads and budget), and timestamps.
@@ -152,7 +153,7 @@ impl Segment {
     /// metric, codes). `Corrupt` on any mismatch.
     #[rustfmt::skip]
     pub fn open(dir: &Path, file: &str, config: &IndexConfig, verify: VerifyMode) -> Result<Segment> {
-        todo!("U11 segment: Segment::open")
+        reading::open(dir, file, config, verify)
     }
 
     pub fn id(&self) -> u64 {
