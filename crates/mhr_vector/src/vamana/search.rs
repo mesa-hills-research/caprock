@@ -24,8 +24,8 @@ fn estimate_order(a: &(f32, u32), b: &(f32, u32)) -> Ordering {
 /// keep pending slots can stop at a local cluster before expanding a worse-scoring
 /// bridge. Conversely, simply popping settled nodes would scan the whole graph.
 /// Stop after `beam` consecutive expansions fail to improve the best `beam`
-/// estimates seen. Both pools stay bounded by the requested beam; admission never
-/// affects progress or routing. The caller offers each ordinal at most once.
+/// estimates seen. Both pools stay bounded by the requested beam. The caller
+/// chooses which nodes belong to this frontier and offers each ordinal at most once.
 #[derive(Debug, Default)]
 pub(super) struct Frontier {
     pending: Vec<(f32, u32)>,
@@ -59,7 +59,7 @@ impl Frontier {
     }
 }
 
-// Scores, including signed-zero ties, use the same order in all three pools.
+// Scores, including signed-zero ties, use the same order in every pool.
 fn offer_bounded(pool: &mut Vec<(f32, u32)>, estimate: (f32, u32), limit: usize) -> bool {
     if pool.len() == limit && estimate_order(&estimate, &pool[limit - 1]) != Ordering::Less {
         return false;
@@ -78,6 +78,7 @@ pub struct SearchScratch {
     visited: Vec<u32>,
     epoch: u32,
     frontier: Frontier,
+    matching_frontier: Frontier,
     admitted: Vec<(f32, u32)>,
 }
 
@@ -124,6 +125,45 @@ pub fn beam_search<C: Codec>(
     admit: &dyn Fn(u32) -> bool,
     scratch: &mut SearchScratch,
 ) -> Vec<(f32, u32)> {
+    search(
+        graph, codec, codes, query, beam, wanted, admit, scratch, false,
+    )
+}
+
+/// Searches with independent bounded frontiers for matching results and rejected
+/// routing nodes. Unlike an unfiltered walk followed by admission, matching nodes
+/// cannot be crowded out by better-scoring nodes outside the filter. Rejected
+/// nodes still route, but progress toward their optimum cannot terminate progress
+/// toward the filtered optimum (or vice versa). Each frontier has `beam` slots
+/// (raised to at least `wanted`); results use the same ordering as [`beam_search`].
+#[allow(clippy::too_many_arguments)]
+pub fn filtered_beam_search<C: Codec>(
+    graph: &Graph,
+    codec: &C,
+    codes: &[u8],
+    query: &C::Query,
+    beam: usize,
+    wanted: usize,
+    admit: &dyn Fn(u32) -> bool,
+    scratch: &mut SearchScratch,
+) -> Vec<(f32, u32)> {
+    search(
+        graph, codec, codes, query, beam, wanted, admit, scratch, true,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn search<C: Codec>(
+    graph: &Graph,
+    codec: &C,
+    codes: &[u8],
+    query: &C::Query,
+    beam: usize,
+    wanted: usize,
+    admit: &dyn Fn(u32) -> bool,
+    scratch: &mut SearchScratch,
+    filtered: bool,
+) -> Vec<(f32, u32)> {
     let nodes = graph.len();
     if wanted == 0 || nodes == 0 {
         return Vec::new();
@@ -132,6 +172,7 @@ pub fn beam_search<C: Codec>(
     let wanted = wanted.min(nodes);
     scratch.begin(nodes);
     scratch.frontier.reset(beam);
+    scratch.matching_frontier.reset(beam);
 
     let code_len = codec.code_len();
     let estimate = |node: u32| {
@@ -140,22 +181,34 @@ pub fn beam_search<C: Codec>(
     };
     scratch.visit(graph.entry);
     let entry = estimate(graph.entry);
-    scratch.frontier.offer(entry);
-    if admit(graph.entry) {
-        offer_bounded(&mut scratch.admitted, entry, wanted);
-    }
+    let offer = |scratch: &mut SearchScratch, scored: (f32, u32)| {
+        let allowed = admit(scored.1);
+        if allowed {
+            offer_bounded(&mut scratch.admitted, scored, wanted);
+        }
+        if filtered && allowed {
+            scratch.matching_frontier.offer(scored);
+        } else {
+            scratch.frontier.offer(scored);
+        }
+    };
+    offer(scratch, entry);
 
-    while let Some(node) = scratch.frontier.pop() {
+    // First find routes from the entry, then refine the matching neighborhood.
+    // Each node goes into exactly one frontier and is scored/expanded at most
+    // once. Either frontier can discover improvements that restart the other.
+    while let Some(node) = scratch
+        .frontier
+        .pop()
+        .or_else(|| scratch.matching_frontier.pop())
+    {
         for &neighbor in graph.neighbors(node) {
             if !scratch.visit(neighbor) {
                 continue;
             }
             let scored = estimate(neighbor);
             // Include all scored, admitted nodes, even outside the pending beam.
-            if admit(neighbor) {
-                offer_bounded(&mut scratch.admitted, scored, wanted);
-            }
-            scratch.frontier.offer(scored);
+            offer(scratch, scored);
         }
     }
     scratch.admitted.clone()
@@ -175,6 +228,152 @@ mod tests {
         };
         let codes = scores.iter().flat_map(|s| s.to_le_bytes()).collect();
         (codec, codes)
+    }
+
+    #[test]
+    fn filtered_progress_is_not_terminated_by_a_better_unfiltered_cluster() {
+        // The unfiltered optimum (0, 1) stalls the routing beam before it can
+        // expand the matching lobe (2 -> 6 -> 8). There are already `wanted`
+        // matches (2, 3), so the short-list fallback cannot fix this miss.
+        // The matching lobe in turn discovers a new rejected bridge (9 -> 10).
+        let graph = Graph {
+            degree: 3,
+            entry: 0,
+            adjacency: [
+                [1, 2, 3],
+                [4, NO_NEIGHBOR, NO_NEIGHBOR],
+                [6, NO_NEIGHBOR, NO_NEIGHBOR],
+                [7, NO_NEIGHBOR, NO_NEIGHBOR],
+                [5, NO_NEIGHBOR, NO_NEIGHBOR],
+                [NO_NEIGHBOR; 3],
+                [8, NO_NEIGHBOR, NO_NEIGHBOR],
+                [NO_NEIGHBOR; 3],
+                [9, NO_NEIGHBOR, NO_NEIGHBOR],
+                [10, NO_NEIGHBOR, NO_NEIGHBOR],
+                [0, 8, NO_NEIGHBOR],
+            ]
+            .concat(),
+        };
+        let (codec, codes) = codec_and_codes(&[
+            100.0, 99.0, 10.0, 9.0, 98.0, 97.0, 20.0, 11.0, 30.0, 101.0, 40.0,
+        ]);
+        let query = codec.prepare(&[1.0]);
+        let admit = |node| matches!(node, 2 | 3 | 6 | 7 | 8 | 10);
+        let mut scratch = SearchScratch::new();
+        for _ in 0..3 {
+            assert_eq!(
+                beam_search(&graph, &codec, &codes, &query, 2, 2, &admit, &mut scratch),
+                [(10.0, 2), (9.0, 3)]
+            );
+            let visits = std::cell::RefCell::new(vec![0; graph.len()]);
+            assert_eq!(
+                filtered_beam_search(
+                    &graph,
+                    &codec,
+                    &codes,
+                    &query,
+                    2,
+                    2,
+                    &|node| {
+                        visits.borrow_mut()[node as usize] += 1;
+                        admit(node)
+                    },
+                    &mut scratch,
+                ),
+                [(40.0, 10), (30.0, 8)]
+            );
+            // Cyclic routes and switching between frontier modes must not cause
+            // rescoring, re-expansion, or leftover candidates from the last query.
+            assert!(visits.borrow().iter().all(|&count| count == 1));
+            for frontier in [&scratch.frontier, &scratch.matching_frontier] {
+                assert!(frontier.pending.len() <= 2);
+                assert!(frontier.best.len() <= 2);
+            }
+        }
+    }
+
+    #[test]
+    fn filtered_frontiers_remain_bounded_and_handle_uniform_admission() {
+        let nodes = 128u32;
+        let graph = Graph {
+            degree: 1,
+            entry: 0,
+            adjacency: (1..nodes).chain([NO_NEIGHBOR]).collect(),
+        };
+        let scores: Vec<_> = (0..nodes).map(|i| (nodes - i) as f32).collect();
+        let (codec, codes) = codec_and_codes(&scores);
+        let query = codec.prepare(&[1.0]);
+        let mut scratch = SearchScratch::new();
+        for beam in [1, 2, 4, 8] {
+            let visits = std::cell::RefCell::new(Vec::new());
+            let found = filtered_beam_search(
+                &graph,
+                &codec,
+                &codes,
+                &query,
+                beam,
+                1,
+                &|node| {
+                    visits.borrow_mut().push(node);
+                    node % 2 == 1
+                },
+                &mut scratch,
+            );
+            assert_eq!(found, [(127.0, 1)]);
+            // Independent progress is not permission to exhaust the graph: both
+            // frontiers must stop after their own non-improving expansions.
+            assert!(visits.borrow().len() <= 4 * beam);
+            for all in [true, false] {
+                assert_eq!(
+                    filtered_beam_search(
+                        &graph,
+                        &codec,
+                        &codes,
+                        &query,
+                        beam,
+                        1,
+                        &|_| all,
+                        &mut scratch,
+                    ),
+                    beam_search(
+                        &graph,
+                        &codec,
+                        &codes,
+                        &query,
+                        beam,
+                        1,
+                        &|_| all,
+                        &mut scratch,
+                    )
+                );
+            }
+        }
+        assert!(
+            filtered_beam_search(
+                &graph,
+                &codec,
+                &codes,
+                &query,
+                1,
+                0,
+                &|_| panic!("zero wanted does not need admission"),
+                &mut scratch,
+            )
+            .is_empty()
+        );
+        assert!(
+            filtered_beam_search(
+                &Graph::default(),
+                &codec,
+                &[],
+                &query,
+                usize::MAX,
+                usize::MAX,
+                &|_| panic!("empty graphs do not need admission"),
+                &mut scratch,
+            )
+            .is_empty()
+        );
     }
 
     #[test]

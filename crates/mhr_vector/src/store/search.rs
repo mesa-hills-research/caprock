@@ -3,9 +3,10 @@
 //! For each segment: compile the filter; when the search is exact, or the segment has no
 //! graph, or at most `filter_flat_below` live records match, search it flat (exact search
 //! for `exact`); otherwise beam-search its graph (beam `max(params.beam or
-//! search_beam, k, rescore)`), admitting live matching ordinals, and rescore. If a graph
-//! search finds fewer than `min(k, matching live)` records, fall back to a flat search
-//! of that segment. Search the delta exactly. Merge everything into the top `k`.
+//! search_beam, k, rescore)`), with separate routing and matching frontiers when
+//! admission excludes nodes, and rescore. If a graph search finds fewer than
+//! `min(k, matching live)` records, fall back to a flat search of that segment.
+//! Search the delta exactly. Merge everything into the top `k`.
 
 use super::Snapshot;
 use crate::config::{AnnKind, SearchParams};
@@ -18,6 +19,7 @@ use crate::segment::Segment;
 use crate::tombstones::Tombstones;
 use crate::topk::merge_hits;
 use crate::types::Hit;
+use crate::vamana::search::filtered_beam_search;
 use crate::vamana::{SearchScratch, beam_search};
 
 impl Snapshot {
@@ -96,10 +98,20 @@ impl Snapshot {
                     };
                     let candidates = with_codec!(segment.codec(), codec => {
                         let prepared = codec.prepare(&query);
-                        beam_search(
-                            graph, codec, segment.codes(), &prepared, beam,
-                            rescore.min(matching as usize), &admit, &mut scratch,
-                        )
+                        // A full result list alone does not imply good filtered
+                        // recall. Let matching nodes make their own progress even
+                        // when better-scoring rejected nodes dominate navigation.
+                        if matching < segment.len() {
+                            filtered_beam_search(
+                                graph, codec, segment.codes(), &prepared, beam,
+                                rescore.min(matching as usize), &admit, &mut scratch,
+                            )
+                        } else {
+                            beam_search(
+                                graph, codec, segment.codes(), &prepared, beam,
+                                rescore.min(matching as usize), &admit, &mut scratch,
+                            )
+                        }
                     });
                     // Rejected/deleted nodes still route the graph, but a selective
                     // filter can leave too few admitted candidates. Never return a
