@@ -1,0 +1,5 @@
+[
+  {"name": "cloudflare", "path": "$CF_DOCS/docs", "kind": "docs", "include": ["*.md", "*.mdx"],
+   "exclude": ["legal/", "license.mdx", "licenses.mdx"], "commit": "791e4a87a901ad52e957189e00ada3bfed5866b0"},
+  {"name": "mdn", "path": "$REPOS/mdn__content", "kind": "docs", "include": ["/files/en-us/**/*.md"]}
+]

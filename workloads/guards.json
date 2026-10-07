@@ -1,19 +1,19 @@
 {
-  "name": "guards-v1",
-  "description": "Recall guards run by every gate after the build phase (SWARM-PACK.md, 'Gate'): moderate slices of every family of data, default parameters, filters. Each part's default-beam recall must meet REQUIREMENTS.md's table; the 'hard' sets (glove, nytimes) must reach 0.95 at some beam of the ladder and may not drop by more than 0.01 at the default beam.",
+  "name": "guards-v2",
+  "description": "Recall guards run by every gate after the build phase (SWARM-PACK.md, 'Gate'): the score's two Voyage sets with real path and language filters, k = 50, binary codes, flat search and updates, plus the small code set and the ann-benchmarks sets, default parameters. Each part's default-beam recall must meet REQUIREMENTS.md's table; the 'hard' sets (glove, nytimes) must reach 0.95 at some beam of the ladder and may not drop by more than 0.01 at the default beam.",
   "parts": [
-    {"dataset": "dbp3l-1024", "base": 200000, "queries": 1000, "config": "vamana-int8", "k": 10, "filters": ["p10", "p01", "p001", "go", "p10-python"]},
-    {"dataset": "dbp3l-1024", "base": 200000, "queries": 1000, "config": "vamana-int8", "k": 50},
-    {"dataset": "dbp3l-1024", "base": 200000, "queries": 1000, "config": "vamana-binary", "k": 10},
-    {"dataset": "dbp3l-1024", "base": 200000, "queries": 1000, "config": "flat-int8", "k": 10},
-    {"dataset": "dbp3l-1536", "base": 200000, "queries": 1000, "config": "vamana-int8", "k": 10},
-    {"dataset": "dbp3l-256", "base": 300000, "queries": 1000, "config": "vamana-int8", "k": 10},
+    {"dataset": "code-voyagecode4-200k", "queries": 1000, "config": "vamana-int8", "k": 10, "filters": ["lang:go", "lang:python", "path:redis", "path:tokio/tokio/src/sync", "path:tokio/tokio/src/signal"]},
+    {"dataset": "code-voyagecode4-200k", "queries": 1000, "config": "vamana-int8", "k": 50},
+    {"dataset": "code-voyagecode4-200k", "queries": 1000, "config": "vamana-binary", "k": 10},
+    {"dataset": "docs-voyage4-200k", "queries": 1000, "config": "vamana-int8", "k": 10, "filters": ["path:mdn/files/en-us/web/javascript", "path:cloudflare/workers", "path:mdn/files/en-us/glossary", "path:cloudflare/kv"]},
+    {"dataset": "docs-voyage4-200k", "queries": 1000, "config": "vamana-binary", "k": 10},
+    {"dataset": "docs-voyage4-200k", "queries": 1000, "config": "flat-int8", "k": 10},
     {"dataset": "code-voyage4-1024", "queries": 1000, "config": "vamana-int8", "k": 10, "filters": ["path:ripgrep", "path:flask/src", "lang:go", "lang:c"]},
     {"dataset": "code-voyage4-1024", "queries": 1000, "config": "vamana-binary", "k": 10},
     {"dataset": "sift-128-euclidean", "base": 300000, "queries": 1000, "config": "vamana-int8", "k": 10},
     {"dataset": "glove-100-angular", "base": 300000, "queries": 1000, "config": "vamana-int8", "k": 10},
     {"dataset": "nytimes-256-angular", "queries": 1000, "config": "vamana-int8", "k": 10},
-    {"dataset": "dbp3l-1024", "base": 100000, "queries": 500, "config": "vamana-int8", "k": 10, "updates": true}
+    {"dataset": "code-voyagecode4-200k", "base": 100000, "queries": 500, "config": "vamana-int8", "k": 10, "updates": true}
   ],
   "build": {"threads": 16, "budget": 2147483648, "batch": 10000, "commit_every": 100000},
   "timed_repeats": 1,

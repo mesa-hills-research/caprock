@@ -130,7 +130,7 @@ Each segment keeps **resident codes** to find candidates:
 
 - `int8`, the default: one byte per dimension, about 4x smaller than f32.
 - `binary`: one bit per dimension plus at most 8 bytes of corrections, about 32x smaller.
-  voyage-code-4 and text-embedding-3 are trained to survive both.
+  voyage-code-4 and voyage-4 are trained to survive both.
 - `f32`: the codes are the vectors.
 
 The best `max(k x rescore_factor, rescore_min)` candidates (int8: 4 and 32; binary: 16
@@ -410,52 +410,58 @@ Datasets are in section 14.
 | Configuration | Datasets | Recall@10 |
 |---|---|---|
 | exact (`IndexConfig::exact`, or `SearchParams::exact`) | all | **equal to the oracle**: same keys, bit-identical scores, same order |
-| `flat-int8` | dbp3l-\*, code-voyage4-1024, sift-128 | ≥ 0.99 |
-| `vamana-int8` (the default configuration) | dbp3l-1024, dbp3l-1536, dbp3l-256, code-voyage4-1024, sift-128-euclidean, synth-1024-6m | ≥ 0.95 at the default beam; recall@50 ≥ 0.95 at k = 50 |
+| `flat-int8` | code-voyagecode4-200k, docs-voyage4-200k, code-voyage4-1024, sift-128 | ≥ 0.99 |
+| `vamana-int8` (the default configuration) | code-voyagecode4-200k, docs-voyage4-200k, code-voyage4-1024, sift-128-euclidean, synth-1024-6m | ≥ 0.95 at the default beam, and recall@50 ≥ 0.95 at k = 50 |
 | `vamana-int8` | glove-100-angular, nytimes-256-angular (hard sets) | ≥ 0.95 at some beam ≤ 512; the default beam's recall may not drop by more than 0.01 against main |
-| `vamana-int8`, filtered | dbp3l-1024: p50, p10, p01, p001, go, p10-python; code set: `path:` and `lang:` filters | ≥ 0.95 for every filter |
-| `vamana-binary` | dbp3l-1024, code-voyage4-1024 | ≥ 0.90 at the default beam; ≥ 0.95 at some beam ≤ 512 |
-| after updates (10% inserts, then 10% deletes); after `maintain`; after `compact` | dbp3l-1024 | ≥ 0.95 at each point |
+| `vamana-int8`, filtered | the code sets: `path:` and `lang:` filters, docs-voyage4-200k: `path:` filters (selectivities from about 12% to 0.1%), synth-1024-6m: p10, p001 | ≥ 0.95 for every filter |
+| `vamana-binary` | code-voyagecode4-200k, docs-voyage4-200k, code-voyage4-1024 | ≥ 0.90 at the default beam, and ≥ 0.95 at some beam ≤ 512 |
+| after updates (10% inserts, then 10% deletes), after `maintain`, after `compact` | code-voyagecode4-200k (guards), docs-voyage4-200k (full suite) | ≥ 0.95 at each point |
 | conformance scenarios (`mhr_vector_conform`) | generated | exact checks equal; mean recall ≥ 0.95 (int8, f32), ≥ 0.90 (binary) |
 
-The code set (~11k vectors) is below `graph_min_vectors`, so it is searched flat. That is
-realistic for a typical repository and makes it a quantization and rescoring check.
+code-voyage4-1024 (~11k vectors) is below `graph_min_vectors`, so it is searched flat.
+That is realistic for a typical repository and makes it a quantization and rescoring
+check.
 
 ### 13.2 Latency and throughput (goals)
 
 | Workload | Goal |
 |---|---|
-| dbp3l-1024, 500k, `vamana-int8`, 1 thread | p50 ≤ 1.0 ms, p99 ≤ 3 ms (≥ 1,000 QPS) |
-| dbp3l-1024, 990k (Linux-scale proxy), 1 thread | p50 ≤ 1.5 ms, p99 ≤ 4 ms |
+| each score set, all vectors, `vamana-int8`, 1 thread | p50 ≤ 1.0 ms, p99 ≤ 3 ms (≥ 1,000 QPS) |
 | synth-1024-6m (5.8M-scale, several segments), 1 thread | p50 ≤ 5 ms, p99 ≤ 15 ms |
 | code-voyage4-1024 (11k, flat), 1 thread | p50 ≤ 0.5 ms |
-| filter p001 (0.1%) on dbp3l-1024 990k | p50 ≤ 2 ms |
-| 32 threads, dbp3l-1024 500k | QPS ≥ 20 x the single-thread QPS |
+| a 0.1% path filter on code-voyagecode4-200k (`path:tokio/tokio/src/signal`) | p50 ≤ 2 ms |
+| 32 threads, code-voyagecode4-200k | QPS ≥ 20 x the single-thread QPS |
 | `apply` of 100 upserts (1024 dims) | p99 ≤ 20 ms (read-your-writes) |
 | inserts in batches of 1,000 (maintenance excluded) | ≥ 50,000 vectors/s |
 | deletes | ≥ 200,000 keys/s |
 | `commit` of a delta of ≤ 8,192 vectors | ≤ 500 ms |
-| build dbp3l-1024 500k (load + compact), 16 threads, 2 GiB budget | ≤ 3 min |
+| build code-voyagecode4-200k (load + compact), 16 threads, 2 GiB budget | ≤ 75 s |
 | build synth-1024-6m, 32 threads, 4 GiB budget | ≤ 60 min |
 | peak build memory | ≤ resident index + budget + 512 MiB |
-| open, 990k, warm / cold (NVMe) | ≤ 1 s / ≤ 5 s |
+| open, code-voyagecode4-200k, warm / cold (NVMe) | ≤ 1 s / ≤ 5 s |
 | disk after compaction | ≤ 1.15 x (4·dim + code + 4·R + 100) bytes per live vector |
 
 These goals are the first estimates, made before any implementation exists. After the
-first complete baseline the owner may adjust them; recall floors are never lowered.
+first complete baseline the owner may adjust them, while recall floors are never lowered.
+The real sets stop at about 200,000 vectors, and synth-1024-6m covers Linux-scale corpora
+and beyond.
 The speed gate optimizes one number (SWARM-PACK.md, "The score").
 
 ## 14. Datasets
 
 | Name | Source | Vectors | Dims | Metric | Role |
 |---|---|---|---|---|---|
-| dbp3l-1024 | text-embedding-3-large on DBpedia (HF Qdrant/…-1536-1M, MIT), Matryoshka prefix | 990k + 10k queries | 1024 | cosine | **the score**; guards; voyage-code-4 stand-in |
-| dbp3l-1536, dbp3l-256 | same, other prefixes | same | 1536, 256 | cosine | dimension coverage (2048-class, 256) |
-| code-voyage4-1024 | arko_index chunks of 11 pinned repositories via voyage-code-4 (`build_code_set.py`) | ~11.5k + 1,000 doc-comment queries | 1024 | cosine | the real thing: quantization, filters with real paths |
+| code-voyagecode4-200k | arko_index chunks of 12 code checkouts in 8 languages via voyage-code-4 (`scripts/voyage_sets.sh`) | ~200k + 2,000 doc-comment queries | 1024 | cosine | **the score** (one of two parts), guards with `lang:` and `path:` filters, k = 50, binary codes, updates |
+| docs-voyage4-200k | arko_index chunks of the Cloudflare docs and MDN via voyage-4 (`scripts/voyage_sets.sh`) | ~57k + 16 evaluation questions and 1,984 headings | 1024 | cosine | **the score** (one of two parts), guards with `path:` filters, binary codes, flat search |
+| code-voyage4-1024 | arko_index chunks of 11 pinned repositories via voyage-code-4 (`build_code_set.py`) | ~11.5k + 1,000 doc-comment queries | 1024 | cosine | a repository-sized set searched flat: quantization, filters with real paths |
 | glove-100-angular, nytimes-256-angular | ann-benchmarks | 1.18M, 290k | 100, 256 | cosine | hard sets (guards) |
 | sift-128-euclidean | ann-benchmarks | 1M | 128 | L2 | L2 coverage |
 | synth-1024-6m | `mhr_vector_bench synth` (clustered) | 6M | 1024 | cosine | scale, segments, memory bounds |
 | glove-25-angular-100k, synth-small | ann-benchmarks slice; synthetic | 100k; 20k | 25; 32 | cosine | local smoke runs |
+
+The score switched to the two Voyage sets on 2026-10-07 (score-v2). Until then it used
+dbp3l-1024, OpenAI text-embedding-3-large vectors of DBpedia cut to 1024 dimensions.
+[docs/datasets.md](docs/datasets.md) gives the reasons, the sources and the sampling.
 
 Datasets without real paths get synthetic paths and languages
 (`generate::path_for(i, PATH_SEED)`), so the standard filters have known selectivities:

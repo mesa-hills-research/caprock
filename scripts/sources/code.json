@@ -1,0 +1,14 @@
+[
+  {"name": "kubernetes", "path": "$REPOS/kubernetes__kubernetes", "kind": "code", "language": "go"},
+  {"name": "elasticsearch", "path": "$REPOS/elastic__elasticsearch", "kind": "code", "language": "java"},
+  {"name": "typescript", "path": "$REPOS/microsoft__TypeScript", "kind": "code", "language": "typescript", "exclude": ["/tests/baselines/"]},
+  {"name": "postgres", "path": "$REPOS/postgres__postgres", "kind": "code", "language": "c"},
+  {"name": "redis", "path": "$REPOS/redis__redis", "kind": "code", "language": "c", "exclude": ["/deps/"]},
+  {"name": "opencv", "path": "$REPOS/opencv__opencv", "kind": "code", "language": "cpp"},
+  {"name": "django", "path": "$REPOS/django__django", "kind": "code", "language": "python"},
+  {"name": "react", "path": "$REPOS/facebook__react", "kind": "code", "language": "javascript"},
+  {"name": "wordpress", "path": "$REPOS/WordPress__wordpress-develop", "kind": "code", "language": "javascript"},
+  {"name": "tokio", "path": "$REPOS/tokio-rs__tokio", "kind": "code", "language": "rust"},
+  {"name": "bevy", "path": "$REPOS/bevyengine__bevy", "kind": "code", "language": "rust"},
+  {"name": "protobuf", "path": "$REPOS/protocolbuffers__protobuf", "kind": "code"}
+]

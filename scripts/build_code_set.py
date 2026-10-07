@@ -16,8 +16,8 @@ token usage, cost, repositories and tags).
 
 Budget: --max-tokens (default 2,800,000) caps documents plus queries by estimate before
 any call (bytes / --bytes-per-token, 3.0 by default, an overestimate for code), and by
-the tokens Voyage reports while running; a hard ceiling of 3,000,000 applies unless
---allow-over. voyage-code-4 costs $0.12 per million tokens (docs/voyage-api-notes.md in
+the tokens Voyage reports while running (a ledger in <work>/billing/ keeps the total
+across interrupted runs); a hard ceiling of 3,000,000 applies unless --allow-over. voyage-code-4 costs $0.12 per million tokens (docs/voyage-api-notes.md in
 arko), so the default budget costs at most about $0.34 (and nothing while the account's
 200M free tokens last). Every embedding is cached by SHA-256 of its text in the work
 directory, so a rerun after an interruption bills nothing twice.
@@ -29,23 +29,13 @@ the chunk's source bytes ("text_format": "path-newline-source/1").
 """
 
 import argparse
-import array
 import hashlib
 import json
 import os
-import re
 import subprocess
-import sys
-import time
-import urllib.error
-import urllib.request
 
-USER_AGENT = "mhr-vector-dataset-builder/0.1"
-API = "https://api.voyageai.com/v1/embeddings"
-PRICE_PER_MILLION = 0.12
-HARD_CEILING = 3_000_000
-MAX_INPUTS = 1000
-MAX_REQUEST_TOKENS_EST = 100_000
+from voyage_common import (HARD_CEILING, TEXT_FORMAT, Budget, Cache, clone, cost, doc_sentence, embed_all, estimate,
+                           log, price, symbol_query, write_dataset)
 
 # name, clone URL, tag, language note. Pinned: the dataset must not drift.
 REPOS = [
@@ -61,22 +51,6 @@ REPOS = [
     ("jq", "https://github.com/jqlang/jq.git", "jq-1.8.2", "c"),
     ("fmt", "https://github.com/fmtlib/fmt.git", "12.2.0", "cpp"),
 ]
-
-
-def log(*args):
-    print(*args, file=sys.stderr, flush=True)
-
-
-def sha(text):
-    return hashlib.sha256(text.encode("utf-8")).digest()
-
-
-def clone(work, name, url, tag):
-    dest = os.path.join(work, "repos", name)
-    if not os.path.isdir(dest):
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
-        subprocess.run(["git", "-c", "advice.detachedHead=false", "clone", "--quiet", "--depth", "1", "--branch", tag, url, dest], check=True)
-    return dest
 
 
 def chunks_of(work, name, root, cli):
@@ -109,66 +83,6 @@ def chunks_of(work, name, root, cli):
     return chunks
 
 
-COMMENT_PREFIXES = ("///", "//!", "//", "--", "#", "*", "/**", "/*")
-
-
-def doc_sentence(chunk):
-    """The first sentence of the chunk's first comment block or docstring, if it reads
-    like documentation (at least five words, not a license header)."""
-    lines = chunk["text"].split("\n")[1:]
-    block = []
-    in_doc = False
-    for raw in lines[:40]:
-        s = raw.strip()
-        if chunk["language"] == "python" and (s.startswith('"""') or s.startswith("'''")):
-            body = s[3:]
-            if body.endswith('"""') or body.endswith("'''"):
-                block.append(body[:-3])
-                break
-            block.append(body)
-            in_doc = True
-            continue
-        if in_doc:
-            if '"""' in s or "'''" in s:
-                block.append(s.split('"""')[0].split("'''")[0])
-                break
-            block.append(s)
-            continue
-        if s.startswith("#") and chunk["language"] in ("c", "cpp"):
-            continue  # preprocessor
-        if s.startswith(COMMENT_PREFIXES):
-            block.append(s.lstrip("/!*-# ").rstrip("*/ "))
-        elif block:
-            break
-    text = " ".join(t for t in block if t).strip()
-    text = re.sub(r"\s+", " ", text)
-    if not text or re.search(r"copyright|license|spdx", text, re.I):
-        return None
-    sentence = re.split(r"(?<=[.!?])\s", text, maxsplit=1)[0][:240]
-    # Commented-out code is not documentation.
-    if re.search(r"[;{}]|=>|\s=\s|\+=|==", sentence):
-        return None
-    letters = sum(ch.isalpha() for ch in sentence)
-    if letters < 0.7 * sum(not ch.isspace() for ch in sentence):
-        return None
-    words = re.findall(r"[A-Za-z]{2,}", sentence)
-    return sentence if len(words) >= 5 else None
-
-
-def symbol_query(chunk):
-    sym = chunk.get("symbol_path") or ""
-    if not sym:
-        return None
-    parts = [p for p in re.split(r"::|\.|/", sym) if p]
-    words = " ".join(re.sub(r"([a-z])([A-Z])", r"\1 \2", p).replace("_", " ") for p in parts[-2:])
-    kind = (chunk.get("kind") or "code").replace("_", " ")
-    return f"{kind} {words}".strip() if len(words) >= 3 else None
-
-
-def estimate(text, bytes_per_token):
-    return int(len(text.encode("utf-8")) / bytes_per_token) + 1
-
-
 def select(repo_chunks, budget, bytes_per_token):
     """Equal shares per repository, unused share carried forward; whole files only."""
     chosen = []
@@ -182,99 +96,15 @@ def select(repo_chunks, budget, bytes_per_token):
         files = sorted(by_file, key=lambda p: hashlib.sha256(f"{name}/{p}".encode()).hexdigest())
         used = 0
         for p in files:
-            cost = sum(estimate(c["text"], bytes_per_token) for c in by_file[p])
-            if used + cost > share:
+            tokens = sum(estimate(c["text"], bytes_per_token) for c in by_file[p])
+            if used + tokens > share:
                 continue
-            used += cost
+            used += tokens
             for c in by_file[p]:
                 chosen.append((name, c))
         total += used
         remaining_repos -= 1
     return chosen
-
-
-class Cache:
-    """Embeddings by SHA-256 of their text: records of 32 bytes + dim float32."""
-
-    def __init__(self, path, dim):
-        self.path, self.dim, self.items = path, dim, {}
-        if os.path.exists(path):
-            data = open(path, "rb").read()
-            rec = 32 + 4 * dim
-            for at in range(0, len(data) - len(data) % rec, rec):
-                v = array.array("f")
-                v.frombytes(data[at + 32:at + rec])
-                self.items[data[at:at + 32]] = v
-        self.out = open(path, "ab")
-
-    def put(self, key, vector):
-        v = array.array("f", vector)
-        self.out.write(key)
-        self.out.write(v.tobytes())
-        self.items[key] = v
-
-    def flush(self):
-        self.out.flush()
-        os.fsync(self.out.fileno())
-
-
-def embed(texts, input_type, model, dim, key):
-    body = json.dumps({
-        "input": texts, "model": model, "input_type": input_type,
-        "truncation": False, "output_dimension": dim, "output_dtype": "float",
-    }).encode()
-    for attempt in range(7):
-        request = urllib.request.Request(API, data=body, headers={
-            "Authorization": f"Bearer {key}", "Content-Type": "application/json", "User-Agent": USER_AGENT,
-        })
-        try:
-            with urllib.request.urlopen(request, timeout=300) as r:
-                out = json.load(r)
-            vectors = [d["embedding"] for d in sorted(out["data"], key=lambda d: d["index"])]
-            if len(vectors) != len(texts):
-                raise SystemExit("Voyage returned the wrong number of vectors")
-            return vectors, out["usage"]["total_tokens"]
-        except urllib.error.HTTPError as e:
-            detail = e.read()[:300].decode(errors="replace")
-            if e.code in (429, 500, 502, 503, 504) and attempt < 6:
-                time.sleep(min(60, 2 ** attempt))
-                continue
-            raise SystemExit(f"Voyage HTTP {e.code}: {detail}")
-        except urllib.error.URLError as e:
-            if attempt < 6:
-                time.sleep(min(60, 2 ** attempt))
-                continue
-            raise SystemExit(f"Voyage unreachable: {e}")
-    raise SystemExit("gave up after retries")
-
-
-def embed_all(items, input_type, args, cache, key, used, bytes_per_token):
-    """items: list of texts. Returns vectors (cached ones are not billed)."""
-    todo = [t for t in dict.fromkeys(items) if sha(t) not in cache.items]
-    batch, size = [], 0
-
-    def flush(batch):
-        nonlocal used
-        est = sum(estimate(t, bytes_per_token) for t in batch)
-        if used + est > args.ceiling:
-            raise SystemExit(f"stopping: {used} tokens used, the next request (~{est}) would pass {args.ceiling}")
-        vectors, billed = embed(batch, input_type, args.model, args.dim, key)
-        used += billed
-        for t, v in zip(batch, vectors):
-            cache.put(sha(t), v)
-        cache.flush()
-        log(f"{input_type}: {len(cache.items)} cached, {used} tokens billed so far")
-
-    for t in todo:
-        est = estimate(t, bytes_per_token)
-        if batch and (len(batch) >= MAX_INPUTS or size + est > MAX_REQUEST_TOKENS_EST):
-            flush(batch)
-            batch, size = [], 0
-        batch.append(t)
-        size += est
-    if batch:
-        flush(batch)
-    return [cache.items[sha(t)] for t in items], used
 
 
 def main():
@@ -336,7 +166,7 @@ def main():
         "queries": len(queries),
         "doc_queries": sum(1 for q in queries if q[5] == "doc"),
         "estimated_tokens": doc_tokens + query_tokens,
-        "estimated_cost_usd": round((doc_tokens + query_tokens) / 1e6 * PRICE_PER_MILLION, 4),
+        "estimated_cost_usd": cost(doc_tokens + query_tokens, args.model),
         "ceiling": args.ceiling,
         "repos": {k: {"chunks": v["chunks"], "files": len(v["files"]), "est_tokens": v["est_tokens"]} for k, v in per_repo.items()},
         "languages": {},
@@ -350,55 +180,29 @@ def main():
     key = os.environ.get("VOYAGE_API_KEY", "").strip()
     if not key:
         raise SystemExit("VOYAGE_API_KEY is not set")
-    cache = Cache(os.path.join(args.work, f"embed-cache-{args.model}-{args.dim}.bin"), args.dim)
-    used = 0
-    doc_vectors, used = embed_all([c["text"] for _, c in chosen], "document", args, cache, key, used, args.bytes_per_token)
-    query_vectors, used = embed_all([q[2] for q in queries], "query", args, cache, key, used, args.bytes_per_token)
-
     name = args.name or f"code-voyage4-{args.dim}"
-    out = os.path.join(args.out, name)
-    os.makedirs(out, exist_ok=True)
-    with open(os.path.join(out, "base.f32"), "wb") as w:
-        for v in doc_vectors:
-            w.write(v.tobytes())
-    with open(os.path.join(out, "queries.f32"), "wb") as w:
-        for v in query_vectors:
-            w.write(v.tobytes())
-    with open(os.path.join(out, "meta.jsonl"), "w") as w:
-        for repo, c in chosen:
-            w.write(json.dumps({"key": f"{repo}:{c['id']}", "path": f"{repo}/{c['path']}", "language": c["language"]}) + "\n")
-    with open(os.path.join(out, "queries.jsonl"), "w") as w:
-        for q in queries:
-            w.write(json.dumps({"text": q[2], "origin": q[3], "repo": q[4], "kind": q[5]}) + "\n")
-    info = {
-        "format": "mhr-vector-dataset/1",
-        "name": name,
-        "metric": "cosine",
-        "dim": args.dim,
-        "base_count": len(doc_vectors),
-        "query_count": len(query_vectors),
-        "base": "base.f32",
-        "queries": "queries.f32",
-        "meta": "meta.jsonl",
-        "query_texts": "queries.jsonl",
-        "source": {
-            "provider": "voyage",
-            "model": args.model,
-            "output_dimension": args.dim,
-            "input_types": {"base": "document", "queries": "query"},
-            "text_format": "path-newline-source/1",
-            "tokens_billed_this_run": used,
-            "estimated_tokens": doc_tokens + query_tokens,
-            "price_per_million_usd": PRICE_PER_MILLION,
-            "repositories": provenance,
-            "chunker": os.path.basename(args.arko_cli),
-            "built_by": "scripts/build_code_set.py",
-        },
-    }
-    with open(os.path.join(out, "dataset.json"), "w") as w:
-        json.dump(info, w, indent=2)
-        w.write("\n")
-    log(f"{out}: {len(doc_vectors)} chunks, {len(query_vectors)} queries; {used} tokens billed (${used / 1e6 * PRICE_PER_MILLION:.2f})")
+    cache = Cache(os.path.join(args.work, f"embed-cache-{args.model}-{args.dim}.bin"), args.dim)
+    budget = Budget(args.ceiling, args.bytes_per_token, os.path.join(args.work, "billing", f"{name}.jsonl"))
+    doc_vectors = embed_all([c["text"] for _, c in chosen], "document", args.model, args.dim, key, cache, budget)
+    query_vectors = embed_all([q[2] for q in queries], "query", args.model, args.dim, key, cache, budget)
+
+    meta_rows = [{"key": f"{repo}:{c['id']}", "path": f"{repo}/{c['path']}", "language": c["language"]} for repo, c in chosen]
+    query_rows = [{"text": q[2], "origin": q[3], "repo": q[4], "kind": q[5]} for q in queries]
+    out = write_dataset(args.out, name, args.dim, doc_vectors, query_vectors, meta_rows, query_rows, {
+        "provider": "voyage",
+        "model": args.model,
+        "output_dimension": args.dim,
+        "input_types": {"base": "document", "queries": "query"},
+        "text_format": TEXT_FORMAT,
+        "tokens_billed": budget.used,
+        "tokens_billed_this_run": budget.this_run,
+        "estimated_tokens": doc_tokens + query_tokens,
+        "price_per_million_usd": price(args.model),
+        "repositories": provenance,
+        "chunker": os.path.basename(args.arko_cli),
+        "built_by": "scripts/build_code_set.py",
+    })
+    log(f"{out}: {len(doc_vectors)} chunks, {len(query_vectors)} queries; {budget.used} tokens billed (${cost(budget.used, args.model)})")
 
 
 if __name__ == "__main__":

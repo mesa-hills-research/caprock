@@ -15,6 +15,7 @@ any unit or bucket whose contract it touches.
 | `crates/mhr_vector/src/lib.rs` | module layout and re-exports (the skeleton `allow` line is removed by the host at the end of the build phase) |
 | `crates/mhr_vector/src/config.rs`, `types.rs`, `error.rs` | the public data types and validation |
 | `workloads/`, `scripts/` | what is measured and how datasets are made |
+| `docs/` | details of the contract (the datasets) |
 | `.gitignore`, `rustfmt.toml` (if added), CI files | repository settings |
 
 Everything else under `crates/mhr_vector/src/` belongs to exactly one unit (UNITS.md;

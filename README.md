@@ -12,6 +12,7 @@ store itself is not implemented yet: every function body in `crates/mhr_vector` 
 | [UNITS.md](UNITS.md) / `units.json` | 19 units with scopes, dependencies and acceptance tests |
 | [SWARM-PACK.md](SWARM-PACK.md) | how the swarm runs it: gates, buckets, the score, the profile, stopping rules |
 | [HOST_OWNED.md](HOST_OWNED.md) | paths agents may not change |
+| [docs/datasets.md](docs/datasets.md) | the datasets, why the score uses Voyage sets, how they are built and what they cost |
 
 ## Layout
 
@@ -23,7 +24,8 @@ crates/mhr_vector_bench    mhr_vector_bench (harness, score) and mhr_vector_conf
                            conformance runner), property tests
 contract/signatures.txt    the frozen interface (scripts/signatures.py --check)
 workloads/                 score, build-score, guards, full, smoke suites (JSON)
-scripts/                   dataset download/conversion, the Voyage code set, box setup
+scripts/                   dataset download and conversion, the Voyage sets, box setup
+docs/                      details: the datasets
 ```
 
 ## Commands
@@ -68,12 +70,18 @@ the store.
 `crates/mhr_vector_oracle/src/dataset.rs`: `dataset.json`, `base.f32`, `queries.f32`,
 optionally `meta.jsonl`, and cached ground truth in `gt/`.
 
+The score (score-v2) runs on two Voyage sets, embedded with the models arko_index uses:
+about 200,000 code chunks in 8 languages (voyage-code-4) and the Cloudflare and MDN
+documentation (voyage-4). [docs/datasets.md](docs/datasets.md) covers their sources,
+sampling and cost.
+
 | Script | Makes |
 |---|---|
+| `scripts/voyage_sets.sh [--dry-run]` | the score's sets, code-voyagecode4-200k and docs-voyage4-200k (about $7 of Voyage tokens) |
+| `scripts/build_voyage_set.py ... [--dry-run]` | a Voyage set from arko_index chunks of code checkouts and documentation folders |
+| `scripts/build_code_set.py ... [--dry-run]` | code-voyage4-1024: ~11.5k chunks of 11 pinned repositories (voyage-code-4) and 1,000 doc-comment queries, ≤ $0.34 |
 | `scripts/fetch_ann.py NAME... --out datasets [--max-base N]` | ann-benchmarks sets (h5py, numpy) |
-| `scripts/fetch_openai3.py --out datasets` | dbp3l-1536/1024/256: 1M text-embedding-3-large vectors (pyarrow) |
-| `scripts/build_code_set.py ... [--dry-run]` | code-voyage4-1024: ~11.5k arko_index chunks of 11 pinned repositories embedded with voyage-code-4, 1,000 doc-comment queries; ~2.8M tokens estimated, ≤ $0.34 |
-| `scripts/box_setup.sh` | everything above except the code set, plus synthetic sets and ground truth, on the box |
+| `scripts/box_setup.sh` | the ann-benchmarks and synthetic sets, and the ground truth of every set present, on the box |
 | `mhr_vector_bench synth` | synthetic sets of any size |
 
 Locally only two small sets are kept: `glove-25-angular-100k` and `synth-small`.

@@ -89,8 +89,9 @@ U14, U17 and U18, and optimization.
 2. Check the toolchain (rustc ≥ 1.89), `perf` (with `perf_event_paranoid` ≤ 1), `taskset`
    and Python 3.
 3. Check the datasets with `mhr_vector_bench datasets`. Missing ones are reported, with
-   `scripts/box_setup.sh` as the fix. The code set (`code-voyage4-1024`) is optional: until
-   it exists, its guard parts are skipped with a notice in the status.
+   `scripts/box_setup.sh` and `scripts/voyage_sets.sh` as the fixes. The optimization
+   phases need the score's two sets (`code-voyagecode4-200k`, `docs-voyage4-200k`). Any
+   other missing set only skips its guard parts, with a notice in the status.
 4. Build the host tools from `main`: `mhr_vector_bench`, `mhr_vector_conform`. Record
    main's **passing sets**: every test name passing in
    `cargo test --workspace --all-features --no-fail-fast` (libtest lines, crate_fix's
@@ -211,35 +212,43 @@ The milestone repeats until the guards pass. Then the baseline score of main is 
 ```sh
 mhr_vector_bench prepare --workload workloads/score.json --index-root $PREP --datasets $MHRV_DATASETS
 taskset -c $BENCH_CPUS mhr_vector_bench score --workload workloads/score.json --index-root $PREP --datasets $MHRV_DATASETS
-# -> {"primary": 1234.5, "components": {"p0.qps": ..., "p0.beam": 40, "p0.recall": 0.9512, "p0.recall_default": 0.97, ...}, "detail": "..."}
+# -> {"primary": 1234.5, "components": {"p0.qps": ..., "p0.beam": 40, "p0.recall": 0.9512, "p0.recall_default": 0.97, "p1.qps": ..., ...}, "detail": "..."}
 ```
 
-**The score is the single-thread queries per second of the default configuration
-(`vamana-int8`) at recall@10 ≥ 0.95, on the first 500,000 vectors of dbp3l-1024 (OpenAI
-text-embedding-3-large, Matryoshka-truncated to voyage-code-4's 1024 dimensions), with its
-first 2,000 held-out queries.**
+**The score (score-v2) is the geometric mean of two parts' single-thread queries per
+second. Each part runs the default configuration (`vamana-int8`) at recall@10 ≥ 0.95 over
+all of a dataset's vectors and its first 2,000 held-out queries. The parts are
+`code-voyagecode4-200k` (about 200,000 arko_index code chunks in 8 languages,
+voyage-code-4) and `docs-voyage4-200k` (the Cloudflare and MDN documentation, about 57,000
+chunks, voyage-4), both at 1024 dimensions.**
 
-- **Building the index.** `prepare` builds it through the public API:
-  - batches of 10,000;
-  - commits every 200,000;
-  - `compact`;
-  - 16 build threads, a 2 GiB budget.
+Why (the owner's decision, 2026-10-07): the store will hold Voyage vectors, voyage-code-4
+for code and voyage-4 for documentation, so the score measures those. Code and
+documentation embeddings spread differently, and one score over both keeps an
+optimization from fitting either alone. The geometric mean counts an equal relative gain
+on either part the same. score-v1 measured 500,000 OpenAI text-embedding-3-large vectors
+of DBpedia (`dbp3l-1024`) as a stand-in. [docs/datasets.md](docs/datasets.md) describes
+the sets.
 
-  Main's prepared index is cached per main commit.
-- **The operating point.** `score` searches the beam ladder (10, 12, ..., 512) upward with
-  untimed recall passes (4 threads, oracle ground truth, tie-aware recall). It takes the
-  smallest beam whose mean recall@10 reaches 0.95, warms up, and times 3 single-thread
-  passes over the 2,000 queries. The median pass's QPS is `primary`.
+- **Building the indexes.** `prepare` builds each part's index through the public API, in
+  batches of 10,000 with a commit every 80,000 (score-v1 committed every 200,000 of
+  500,000), then `compact`, with 16 build threads and a 2 GiB budget. Main's prepared
+  indexes are cached per main commit.
+- **The operating point.** For each part, `score` searches the beam ladder (10, 12, ...,
+  512) upward with untimed recall passes (4 threads, oracle ground truth, tie-aware
+  recall). It takes the smallest beam whose mean recall@10 reaches 0.95, warms up, and
+  times 3 single-thread passes over the 2,000 queries. The median pass's QPS is the
+  part's number (`p0.qps`, `p1.qps`), and `primary` is their geometric mean.
 - **`primary` is 0** when any result breaks a rule (a wrong count, a non-canonical score,
-  a filter violation, ...) or no beam reaches 0.95. A better graph, faster kernels and
-  cheaper rescoring all raise it. Trading recall away cannot, because the threshold is
-  fixed.
+  a filter violation, ...) or either part reaches 0.95 at no beam. A better graph, faster
+  kernels and cheaper rescoring all raise it. Trading recall away cannot, because the
+  threshold is fixed.
 - **The build.** The workspace release profile (opt-level 3, line tables for `perf`), no
   `RUSTFLAGS` and no `target-cpu`: what a user's `cargo build --release` produces. If the
   owner pre-approves a safe-API SIMD dispatch crate (REQUIREMENTS.md section 16), runtime
   dispatch is how faster instructions are reached.
 - **Pinned.** `bench_cpus` are 4 physical cores kept free of everything else. The timed
-  pass is single-threaded; the recall passes use the other 3 cores.
+  pass is single-threaded, and the recall passes use the other 3 cores.
 
 ### 7.2 The gate for an optimization branch
 
@@ -378,8 +387,8 @@ Beside the engine's shell and `record_lesson`:
 | What | Where |
 |---|---|
 | this repository | `/work/mhr-vector/repo`: from a bundle (`git bundle create vector.bundle --all` here, copied over; nothing is pushed) |
-| datasets, Python tools, the harness build | `/work/mhr-vector/{datasets,venv,target-host}` (`scripts/box_setup.sh`, about 45 GB, mostly downloads) |
-| the code set | `/work/mhr-vector/datasets/code-voyage4-1024` (the owner runs `scripts/build_code_set.py` with the Voyage key) |
+| datasets, Python tools, the harness build | `/work/mhr-vector/{datasets,venv,target-host}` (`scripts/box_setup.sh`, about 30 GB, mostly downloads) |
+| the Voyage sets | `/work/mhr-vector/datasets/{code-voyagecode4-200k,docs-voyage4-200k,code-voyage4-1024}`, about 2 GB with their caches (the owner runs `scripts/voyage_sets.sh` and `scripts/build_code_set.py` with the Voyage key) |
 | the run | `/work/mhr-vector/run` (settings, state, `work/main`, worktrees, reports) |
 
 **CPUs**: EPYC 9354P, 32 cores and 64 threads. `bench_cpus` 28-31 with siblings 60-63
@@ -419,5 +428,6 @@ unit's gate; a mutated copy must be rejected:
 - **Gate time**:
   - build phase: 3-10 minutes, dominated by `cargo test --workspace` and the conformance
     run;
-  - optimization: add a prepare (about 1-2 minutes at 500k), 10 score runs (about 10
-    seconds each), the guard suite (5-10 minutes) and a 3+3 build-score comparison.
+  - optimization: add a prepare (about a minute for the score's 257,000 vectors), 10
+    score runs (10-20 seconds each, two parts), the guard suite (5-10 minutes) and a 3+3
+    build-score comparison.

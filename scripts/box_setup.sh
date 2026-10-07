@@ -1,26 +1,25 @@
 #!/usr/bin/env bash
 # Prepares the mhr_vector swarm's datasets and ground truth on the build box.
 #
-#   scripts/box_setup.sh [--skip-openai3] [--skip-synth]
+#   scripts/box_setup.sh [--skip-synth]
 #
 # Layout (override the root with MHRV_ROOT):
-#   $MHRV_ROOT/venv        Python tools (h5py, numpy, pyarrow)
+#   $MHRV_ROOT/venv        Python tools (h5py, numpy)
 #   $MHRV_ROOT/datasets    converted datasets (MHRV_DATASETS for the harness)
 #   $MHRV_ROOT/target-host the harness build
-# Disk: about 45 GB (downloads are deleted after conversion): ann sets ~3 GB, the
-# OpenAI sets ~11 GB, the 6M synthetic set ~25 GB, ground truth < 1 GB.
-# The code set (build_code_set.py) needs a Voyage key and is run separately.
+# Disk: about 30 GB (downloads are deleted after conversion): ann sets ~3 GB, the 6M
+# synthetic set ~25 GB, ground truth < 1 GB.
+# The Voyage sets (scripts/voyage_sets.sh, build_code_set.py) need a Voyage key and are
+# built separately. Once they exist, a rerun of this script adds their ground truth.
 set -euo pipefail
 
 ROOT=${MHRV_ROOT:-/work/mhr-vector}
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 DATASETS=$ROOT/datasets
 THREADS=${THREADS:-32}
-SKIP_OPENAI3=0
 SKIP_SYNTH=0
 for arg in "$@"; do
   case $arg in
-    --skip-openai3) SKIP_OPENAI3=1 ;;
     --skip-synth) SKIP_SYNTH=1 ;;
     *) echo "unknown option $arg" >&2; exit 2 ;;
   esac
@@ -44,11 +43,6 @@ for name in glove-100-angular nytimes-256-angular sift-128-euclidean; do
 done
 have glove-25-angular-100k || "$PY" "$REPO/scripts/fetch_ann.py" glove-25-angular --out "$DATASETS" --max-base 100000 --max-queries 1000
 
-# OpenAI text-embedding-3-large, 1M vectors, at 1536, 1024 and 256 dimensions.
-if [ "$SKIP_OPENAI3" = 0 ] && ! have dbp3l-1024; then
-  "$PY" "$REPO/scripts/fetch_openai3.py" --out "$DATASETS" --dims 1536,1024,256
-fi
-
 # Synthetic sets: a small one for smoke runs, a 6M x 1024 one for scale and memory.
 have synth-small || "$BENCH" synth --out "$DATASETS/synth-small" --dim 32 --n 20000 --queries 200 --clusters 50
 if [ "$SKIP_SYNTH" = 0 ]; then
@@ -57,11 +51,20 @@ fi
 
 # Ground truth for the gate's workloads (the harness would compute it lazily anyway).
 export MHRV_DATASETS=$DATASETS
-if have dbp3l-1024; then
-  "$BENCH" gt --dataset dbp3l-1024 --base 500000 --queries 2000 --threads "$THREADS"
-  "$BENCH" gt --dataset dbp3l-1024 --base 200000 --queries 1000 --threads "$THREADS" --filters p10,p01,p001,go,p10-python
-  "$BENCH" gt --dataset dbp3l-1536 --base 200000 --queries 1000 --threads "$THREADS"
-  "$BENCH" gt --dataset dbp3l-256 --base 300000 --queries 1000 --threads "$THREADS"
+# The Voyage sets: the score's slices, the guards' filters, the guards' update part.
+if have code-voyagecode4-200k; then
+  "$BENCH" gt --dataset code-voyagecode4-200k --queries 2000 --threads "$THREADS"
+  "$BENCH" gt --dataset code-voyagecode4-200k --queries 1000 --threads "$THREADS" \
+    --filters lang:go,lang:python,path:redis,path:tokio/tokio/src/sync,path:tokio/tokio/src/signal
+  "$BENCH" gt --dataset code-voyagecode4-200k --base 100000 --queries 500 --threads "$THREADS"
+fi
+if have docs-voyage4-200k; then
+  "$BENCH" gt --dataset docs-voyage4-200k --queries 2000 --threads "$THREADS"
+  "$BENCH" gt --dataset docs-voyage4-200k --queries 1000 --threads "$THREADS" \
+    --filters path:mdn/files/en-us/web/javascript,path:cloudflare/workers,path:mdn/files/en-us/glossary,path:cloudflare/kv
+fi
+if have code-voyage4-1024; then
+  "$BENCH" gt --dataset code-voyage4-1024 --queries 1000 --threads "$THREADS" --filters path:ripgrep,path:flask/src,lang:go,lang:c
 fi
 "$BENCH" gt --dataset sift-128-euclidean --base 300000 --queries 1000 --threads "$THREADS"
 "$BENCH" gt --dataset glove-100-angular --base 300000 --queries 1000 --threads "$THREADS"
