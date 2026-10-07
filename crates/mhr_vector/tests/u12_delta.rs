@@ -1,4 +1,4 @@
-//! Acceptance tests of unit U13 (delta): exact search, isolation of views, cheap views.
+//! Acceptance tests of unit U12 (delta): exact search, isolation of views, cheap views.
 #![cfg(feature = "internals")]
 
 mod common;

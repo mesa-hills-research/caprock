@@ -1,4 +1,4 @@
-//! Vamana graphs (units U15 build, U16 search; REQUIREMENTS.md, "Approximate search").
+//! Vamana graphs (units U14 build, U15 search; REQUIREMENTS.md, "Approximate search").
 //!
 //! A segment's graph is a fixed-degree adjacency array over its ordinals: row `i` holds
 //! node `i`'s out-neighbours followed by [`NO_NEIGHBOR`] padding. Construction is
@@ -53,13 +53,13 @@ impl Graph {
     /// The graph as saved in a segment's `Graph` section: degree (u32), entry (u32),
     /// node count (u64), then the adjacency (u32 each), little-endian.
     pub fn to_bytes(&self) -> Vec<u8> {
-        todo!("U15 vamana-build: Graph::to_bytes")
+        todo!("U14 vamana-build: Graph::to_bytes")
     }
 
     /// The inverse of [`Graph::to_bytes`] for a segment of `nodes` ordinals. `Corrupt`
     /// (empty path) when the length, the node count, the entry or a neighbour id is out
     /// of range, or a row repeats a neighbour or names its own node.
     pub fn from_bytes(bytes: &[u8], nodes: usize) -> Result<Graph> {
-        todo!("U15 vamana-build: Graph::from_bytes")
+        todo!("U14 vamana-build: Graph::from_bytes")
     }
 }

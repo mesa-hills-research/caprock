@@ -1,4 +1,4 @@
-//! Acceptance tests of unit U20 (embedding models and the embedding cache).
+//! Acceptance tests of unit U19 (embedding models and the embedding cache).
 
 mod common;
 
@@ -112,16 +112,16 @@ fn cache_round_trips_across_reopen() {
             Err(Error::Locked { .. })
         ));
         assert!(matches!(
-            c.put(&[(hash(8), &[1.0, 2.0][..])]),
+            c.put(&[(hash(9000), &[1.0, 2.0][..])]),
             Err(Error::InvalidVector(_))
         ));
         let nan = vec![f32::NAN; dim];
         assert!(
-            c.put(&[(hash(9), &vector(9, dim)[..]), (hash(10), &nan[..])])
+            c.put(&[(hash(9001), &vector(9, dim)[..]), (hash(9002), &nan[..])])
                 .is_err()
         );
         assert!(
-            !c.contains(&hash(9)) && !c.contains(&hash(10)),
+            !c.contains(&hash(9000)) && !c.contains(&hash(9001)) && !c.contains(&hash(9002)),
             "a refused batch adds nothing"
         );
         c.flush().unwrap();

@@ -1,4 +1,4 @@
-//! The embedding cache (unit U20).
+//! The embedding cache (unit U19).
 //!
 //! One directory per model under a root: `<root>/<document fingerprint>/`, holding a
 //! `model.json` (the [`EmbeddingModel`]) and an append-only log of records:
@@ -40,53 +40,53 @@ impl EmbeddingCache {
     /// directory's `model.json` describes a model that `requires_reembed` relative to
     /// `model`; `Locked` if another handle has it open.
     pub fn open(root: &Path, model: &EmbeddingModel) -> Result<EmbeddingCache> {
-        todo!("U20 embedding: EmbeddingCache::open")
+        todo!("U19 embedding: EmbeddingCache::open")
     }
 
     pub fn model(&self) -> &EmbeddingModel {
-        todo!("U20 embedding: EmbeddingCache::model")
+        todo!("U19 embedding: EmbeddingCache::model")
     }
 
     pub fn len(&self) -> usize {
-        todo!("U20 embedding: EmbeddingCache::len")
+        todo!("U19 embedding: EmbeddingCache::len")
     }
 
     pub fn is_empty(&self) -> bool {
-        todo!("U20 embedding: EmbeddingCache::is_empty")
+        todo!("U19 embedding: EmbeddingCache::is_empty")
     }
 
     pub fn contains(&self, hash: &ContentHash) -> bool {
-        todo!("U20 embedding: EmbeddingCache::contains")
+        todo!("U19 embedding: EmbeddingCache::contains")
     }
 
     /// The cached vector, if any (read from the log; checksum verified).
     pub fn get(&self, hash: &ContentHash) -> Result<Option<Vec<f32>>> {
-        todo!("U20 embedding: EmbeddingCache::get")
+        todo!("U19 embedding: EmbeddingCache::get")
     }
 
     /// The positions in `hashes` with no cached vector, ascending (what to embed).
     pub fn missing(&self, hashes: &[ContentHash]) -> Vec<usize> {
-        todo!("U20 embedding: EmbeddingCache::missing")
+        todo!("U19 embedding: EmbeddingCache::missing")
     }
 
     /// Adds vectors (`InvalidVector` on a wrong dimension or a non-finite value; nothing
     /// is added then). Buffered: durable after [`flush`](Self::flush).
     pub fn put(&mut self, items: &[(ContentHash, &[f32])]) -> Result<()> {
-        todo!("U20 embedding: EmbeddingCache::put")
+        todo!("U19 embedding: EmbeddingCache::put")
     }
 
     /// Writes buffered records and fsyncs the log.
     pub fn flush(&mut self) -> Result<()> {
-        todo!("U20 embedding: EmbeddingCache::flush")
+        todo!("U19 embedding: EmbeddingCache::flush")
     }
 
     /// Keeps only the entries `keep` accepts, rewriting the log; returns how many were
     /// dropped.
     pub fn retain(&mut self, keep: &dyn Fn(&ContentHash) -> bool) -> Result<usize> {
-        todo!("U20 embedding: EmbeddingCache::retain")
+        todo!("U19 embedding: EmbeddingCache::retain")
     }
 
     pub fn stats(&self) -> CacheStats {
-        todo!("U20 embedding: EmbeddingCache::stats")
+        todo!("U19 embedding: EmbeddingCache::stats")
     }
 }

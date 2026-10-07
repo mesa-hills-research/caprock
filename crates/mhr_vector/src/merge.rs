@@ -1,4 +1,4 @@
-//! Merge planning and the memory math (unit U17; REQUIREMENTS.md, "Maintenance" and
+//! Merge planning and the memory math (unit U16; REQUIREMENTS.md, "Maintenance" and
 //! "Memory").
 //!
 //! Planning is a pure function of segment summaries, so the same segments always give
@@ -50,7 +50,7 @@ pub fn plan(
     ann: &AnnConfig,
     max_segment_vectors: u64,
 ) -> Vec<MergePlan> {
-    todo!("U17 merge: plan")
+    todo!("U16 merge: plan")
 }
 
 /// Merges that bring the index to a compact state: every deletion purged, every output
@@ -64,13 +64,13 @@ pub fn plan_compaction(
     ann: &AnnConfig,
     max_segment_vectors: u64,
 ) -> Vec<MergePlan> {
-    todo!("U17 merge: plan_compaction")
+    todo!("U16 merge: plan_compaction")
 }
 
 /// The most records one segment build may hold within `budget` bytes for this
 /// configuration (REQUIREMENTS.md, "Memory"). `Budget` when fewer than 1,024 fit.
 pub fn max_segment_vectors(config: &IndexConfig, budget: u64) -> Result<u64> {
-    todo!("U17 merge: max_segment_vectors")
+    todo!("U16 merge: max_segment_vectors")
 }
 
 /// The live records of several segments, as one [`RecordSource`] (input order, then
@@ -82,28 +82,28 @@ pub struct LiveRecords<'a> {
 
 impl<'a> LiveRecords<'a> {
     pub fn new(inputs: Vec<(&'a Segment, &'a Tombstones)>) -> LiveRecords<'a> {
-        todo!("U17 merge: LiveRecords::new")
+        todo!("U16 merge: LiveRecords::new")
     }
 }
 
 impl RecordSource for LiveRecords<'_> {
     fn len(&self) -> usize {
-        todo!("U17 merge: LiveRecords::len")
+        todo!("U16 merge: LiveRecords::len")
     }
 
     fn key(&self, i: usize) -> &str {
-        todo!("U17 merge: LiveRecords::key")
+        todo!("U16 merge: LiveRecords::key")
     }
 
     fn path(&self, i: usize) -> &str {
-        todo!("U17 merge: LiveRecords::path")
+        todo!("U16 merge: LiveRecords::path")
     }
 
     fn language(&self, i: usize) -> &str {
-        todo!("U17 merge: LiveRecords::language")
+        todo!("U16 merge: LiveRecords::language")
     }
 
     fn read_vector(&self, i: usize, out: &mut [f32]) -> Result<()> {
-        todo!("U17 merge: LiveRecords::read_vector")
+        todo!("U16 merge: LiveRecords::read_vector")
     }
 }

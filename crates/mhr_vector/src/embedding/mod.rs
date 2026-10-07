@@ -1,4 +1,4 @@
-//! The arko_index integration surface (unit U20; REQUIREMENTS.md, "Embedding models and
+//! The arko_index integration surface (unit U19; REQUIREMENTS.md, "Embedding models and
 //! the cache").
 //!
 //! - [`EmbeddingModel`] describes where an index's vectors come from. It is saved in the
@@ -89,7 +89,7 @@ impl EmbeddingModel {
     /// type, output type, text format or revision differs. (A different query input
     /// type, or `normalized`, does not change stored vectors.)
     pub fn requires_reembed(&self, other: &EmbeddingModel) -> bool {
-        todo!("U20 embedding: EmbeddingModel::requires_reembed")
+        todo!("U19 embedding: EmbeddingModel::requires_reembed")
     }
 
     /// A stable, file-name-safe identity of the document vectors:
@@ -99,13 +99,13 @@ impl EmbeddingModel {
     /// [`requires_reembed`](Self::requires_reembed) the other (unless replaced bytes
     /// collide, which callers avoid by using plain names).
     pub fn document_fingerprint(&self) -> String {
-        todo!("U20 embedding: EmbeddingModel::document_fingerprint")
+        todo!("U19 embedding: EmbeddingModel::document_fingerprint")
     }
 
     /// Checks the fields: non-empty provider, model, dtype and text format (at most 128
     /// bytes each), dimensions in `1..=MAX_DIM`. `InvalidConfig` otherwise.
     pub fn validate(&self) -> Result<()> {
-        todo!("U20 embedding: EmbeddingModel::validate")
+        todo!("U19 embedding: EmbeddingModel::validate")
     }
 }
 

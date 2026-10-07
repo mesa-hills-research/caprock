@@ -1,5 +1,5 @@
-//! The store: one [`Writer`], many [`Reader`]s and [`Snapshot`]s (units U18 writer and
-//! snapshot, U19 search and reader; REQUIREMENTS.md, "Concurrency", "Updates and
+//! The store: one [`Writer`], many [`Reader`]s and [`Snapshot`]s (units U17 writer and
+//! snapshot, U18 search and reader; REQUIREMENTS.md, "Concurrency", "Updates and
 //! visibility", "Persistence").
 //!
 //! - [`Writer`] owns an index directory (exclusive lock). [`Writer::apply`] changes the

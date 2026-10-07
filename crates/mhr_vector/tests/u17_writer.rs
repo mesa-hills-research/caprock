@@ -1,4 +1,4 @@
-//! Acceptance tests of unit U18 (writer and snapshot accessors), through the public API.
+//! Acceptance tests of unit U17 (writer and snapshot accessors), through the public API.
 
 mod common;
 
@@ -300,7 +300,9 @@ fn jobs_run_elsewhere_and_keep_later_changes() {
     let dir = TempDir::new("w-jobs");
     let mut w = Writer::create(dir.path(), config(8), options(100, 1)).unwrap();
     let mut m = Model::new(8, 6);
-    m.apply(&mut w, 0..2000, &[]);
+    for c in 0..20 {
+        m.apply(&mut w, c * 100..(c + 1) * 100, &[]);
+    }
     let job = w.plan_compaction().expect("work to do");
     assert!(!job.describe().is_empty());
     let handle = std::thread::spawn(move || job.run());

@@ -1,4 +1,4 @@
-//! Acceptance tests of unit U15 (Vamana construction and graph serialization).
+//! Acceptance tests of unit U14 (Vamana construction and graph serialization).
 #![cfg(feature = "internals")]
 
 mod common;
@@ -48,7 +48,7 @@ fn assert_valid(g: &Graph, n: usize, params: &VamanaParams) {
 }
 
 /// A plain best-first search with exact scores, written here so this unit does not
-/// depend on U16.
+/// depend on U15.
 fn greedy(
     g: &Graph,
     base: &[Vec<f32>],

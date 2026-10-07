@@ -1,4 +1,4 @@
-//! Acceptance tests of unit U19 (snapshot search and readers), through the public API,
+//! Acceptance tests of unit U18 (snapshot search and readers), through the public API,
 //! against oracle scenarios.
 
 mod common;

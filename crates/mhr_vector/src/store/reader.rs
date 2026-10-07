@@ -1,4 +1,4 @@
-//! Readers (unit U19).
+//! Readers (unit U18).
 
 use std::path::Path;
 
@@ -10,18 +10,18 @@ impl Reader {
     /// A reader of the last committed generation of `dir` (no lock; another process may
     /// be writing). Errors: `NotFound`, `Corrupt`, `UnsupportedFormat`, `Io`.
     pub fn open(dir: &Path, options: StoreOptions) -> Result<Reader> {
-        todo!("U19 reader: Reader::open")
+        todo!("U18 reader: Reader::open")
     }
 
     /// Picks up a newer committed generation, if any; returns whether it changed. A
     /// writer's reader always has the latest snapshot (returns `false`). Retries when a
     /// file named by the manifest it read was removed meanwhile.
     pub fn refresh(&self) -> Result<bool> {
-        todo!("U19 reader: Reader::refresh")
+        todo!("U18 reader: Reader::refresh")
     }
 
     /// The current snapshot.
     pub fn snapshot(&self) -> Snapshot {
-        todo!("U19 reader: Reader::snapshot")
+        todo!("U18 reader: Reader::snapshot")
     }
 }

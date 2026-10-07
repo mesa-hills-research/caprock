@@ -147,7 +147,19 @@ fn fast_kernels_are_close() {
 }
 
 #[test]
-#[should_panic]
 fn length_mismatch_panics() {
-    distance::dot(&[1.0, 2.0], &[1.0]);
+    panics_for_real(|| {
+        distance::dot(&[1.0, 2.0], &[1.0]);
+    });
+}
+
+/// Runs `f`, which must panic for a reason other than an unimplemented stub.
+fn panics_for_real(f: impl FnOnce() + std::panic::UnwindSafe) {
+    let err = std::panic::catch_unwind(f).expect_err("expected a panic");
+    let msg = err
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| err.downcast_ref::<&str>().map(|s| s.to_string()))
+        .unwrap_or_default();
+    assert!(!msg.contains("not yet implemented"), "{msg}");
 }

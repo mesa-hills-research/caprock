@@ -1,4 +1,4 @@
-//! Beam search over a Vamana graph (unit U16).
+//! Beam search over a Vamana graph (unit U15).
 //!
 //! Greedy best-first search from the graph's entry with a candidate list of `beam` nodes,
 //! scoring nodes with the codec's estimates. Nodes that `admit` rejects (deleted, or
@@ -35,5 +35,5 @@ pub fn beam_search<C: Codec>(
     admit: &dyn Fn(u32) -> bool,
     scratch: &mut SearchScratch,
 ) -> Vec<(f32, u32)> {
-    todo!("U16 vamana-search: beam_search")
+    todo!("U15 vamana-search: beam_search")
 }

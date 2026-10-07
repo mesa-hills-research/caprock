@@ -1,4 +1,4 @@
-//! Searching a snapshot (unit U19; REQUIREMENTS.md, "Search").
+//! Searching a snapshot (unit U18; REQUIREMENTS.md, "Search").
 //!
 //! For each segment: compile the filter; when the search is exact, or the segment has no
 //! graph, or at most `filter_flat_below` live records match, search it flat (exact search
@@ -26,6 +26,6 @@ impl Snapshot {
         filter: Option<&Filter>,
         params: &SearchParams,
     ) -> Result<Vec<Hit>> {
-        todo!("U19 search: Snapshot::search")
+        todo!("U18 search: Snapshot::search")
     }
 }

@@ -104,7 +104,19 @@ fn bitset_operations() {
 }
 
 #[test]
-#[should_panic]
 fn bitset_out_of_range_panics() {
-    Bitset::new(10).get(10);
+    panics_for_real(|| {
+        Bitset::new(10).get(10);
+    });
+}
+
+/// Runs `f`, which must panic for a reason other than an unimplemented stub.
+fn panics_for_real(f: impl FnOnce() + std::panic::UnwindSafe) {
+    let err = std::panic::catch_unwind(f).expect_err("expected a panic");
+    let msg = err
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| err.downcast_ref::<&str>().map(|s| s.to_string()))
+        .unwrap_or_default();
+    assert!(!msg.contains("not yet implemented"), "{msg}");
 }

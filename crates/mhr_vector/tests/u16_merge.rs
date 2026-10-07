@@ -1,4 +1,4 @@
-//! Acceptance tests of unit U17 (merge planning, the memory math, live records).
+//! Acceptance tests of unit U16 (merge planning, the memory math, live records).
 #![cfg(feature = "internals")]
 
 mod common;

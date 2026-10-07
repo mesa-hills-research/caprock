@@ -1,4 +1,4 @@
-//! The in-memory delta (unit U13; REQUIREMENTS.md, "Updates and visibility").
+//! The in-memory delta (unit U12; REQUIREMENTS.md, "Updates and visibility").
 //!
 //! Recent upserts live here until the writer seals them into a segment. Snapshots hold a
 //! [`DeltaView`]: an immutable view that later changes never affect. Taking a view must
@@ -21,45 +21,45 @@ pub struct Delta {
 
 impl Delta {
     pub fn new(dim: usize, metric: Metric) -> Delta {
-        todo!("U13 delta: Delta::new")
+        todo!("U12 delta: Delta::new")
     }
 
     /// Live records.
     pub fn len(&self) -> usize {
-        todo!("U13 delta: Delta::len")
+        todo!("U12 delta: Delta::len")
     }
 
     pub fn is_empty(&self) -> bool {
-        todo!("U13 delta: Delta::is_empty")
+        todo!("U12 delta: Delta::is_empty")
     }
 
     /// Inserts a record (vector in stored form), replacing a live one with the same key.
     pub fn upsert(&mut self, key: &str, vector: &[f32], path: &str, language: &str) {
-        todo!("U13 delta: Delta::upsert")
+        todo!("U12 delta: Delta::upsert")
     }
 
     /// Removes a live record; returns whether it was live.
     pub fn delete(&mut self, key: &str) -> bool {
-        todo!("U13 delta: Delta::delete")
+        todo!("U12 delta: Delta::delete")
     }
 
     pub fn contains(&self, key: &str) -> bool {
-        todo!("U13 delta: Delta::contains")
+        todo!("U12 delta: Delta::contains")
     }
 
     /// An immutable view of the current contents.
     pub fn view(&self) -> DeltaView {
-        todo!("U13 delta: Delta::view")
+        todo!("U12 delta: Delta::view")
     }
 
     /// The current contents as a view, leaving the delta empty.
     pub fn take(&mut self) -> DeltaView {
-        todo!("U13 delta: Delta::take")
+        todo!("U12 delta: Delta::take")
     }
 
     /// Memory held.
     pub fn resident_bytes(&self) -> u64 {
-        todo!("U13 delta: Delta::resident_bytes")
+        todo!("U12 delta: Delta::resident_bytes")
     }
 }
 
@@ -74,52 +74,52 @@ pub struct DeltaView {
 impl DeltaView {
     /// An empty view.
     pub fn empty(dim: usize, metric: Metric) -> DeltaView {
-        todo!("U13 delta: DeltaView::empty")
+        todo!("U12 delta: DeltaView::empty")
     }
 
     /// Live records.
     pub fn live(&self) -> usize {
-        todo!("U13 delta: DeltaView::live")
+        todo!("U12 delta: DeltaView::live")
     }
 
     pub fn contains(&self, key: &str) -> bool {
-        todo!("U13 delta: DeltaView::contains")
+        todo!("U12 delta: DeltaView::contains")
     }
 
     pub fn get(&self, key: &str) -> Option<StoredRecord> {
-        todo!("U13 delta: DeltaView::get")
+        todo!("U12 delta: DeltaView::get")
     }
 
     /// The exact top `k` live records matching `filter` for a stored-form `query`, with
     /// canonical scores, in result order.
     pub fn search(&self, query: &[f32], k: usize, filter: Option<&Filter>) -> Vec<Hit> {
-        todo!("U13 delta: DeltaView::search")
+        todo!("U12 delta: DeltaView::search")
     }
 
     /// Memory held by this view (shared memory counted once per view).
     pub fn resident_bytes(&self) -> u64 {
-        todo!("U13 delta: DeltaView::resident_bytes")
+        todo!("U12 delta: DeltaView::resident_bytes")
     }
 }
 
 impl RecordSource for DeltaView {
     fn len(&self) -> usize {
-        todo!("U13 delta: RecordSource::len")
+        todo!("U12 delta: RecordSource::len")
     }
 
     fn key(&self, i: usize) -> &str {
-        todo!("U13 delta: RecordSource::key")
+        todo!("U12 delta: RecordSource::key")
     }
 
     fn path(&self, i: usize) -> &str {
-        todo!("U13 delta: RecordSource::path")
+        todo!("U12 delta: RecordSource::path")
     }
 
     fn language(&self, i: usize) -> &str {
-        todo!("U13 delta: RecordSource::language")
+        todo!("U12 delta: RecordSource::language")
     }
 
     fn read_vector(&self, i: usize, out: &mut [f32]) -> Result<()> {
-        todo!("U13 delta: RecordSource::read_vector")
+        todo!("U12 delta: RecordSource::read_vector")
     }
 }

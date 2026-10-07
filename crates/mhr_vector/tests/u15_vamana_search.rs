@@ -1,5 +1,5 @@
-//! Acceptance tests of unit U16 (beam search), on graphs built here (exact k-NN graphs),
-//! so this unit does not depend on U15.
+//! Acceptance tests of unit U15 (beam search), on graphs built here (exact k-NN graphs),
+//! so this unit does not depend on U14.
 #![cfg(feature = "internals")]
 
 mod common;

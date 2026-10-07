@@ -1,4 +1,4 @@
-//! Deterministic Vamana construction (unit U15).
+//! Deterministic Vamana construction (unit U14).
 //!
 //! Suggested method (ParlayANN's deterministic batch insertion, Manohar et al., PPoPP
 //! 2024): insert points in batches of doubling size in a seeded order; within a batch,
@@ -6,6 +6,12 @@
 //! out-edges, then add the reverse edges in a fixed order and prune overfull rows.
 //! Any method meeting the acceptance tests and the recall targets is fine, as long as the
 //! result does not depend on `threads`.
+//!
+//! Robust prune compares distances (`alpha * d(o, c) > d(p, c)`), which must be
+//! non-negative: from a similarity `s` use `1 - s` for cosine (unit vectors), `-s` for L2
+//! (the score is the negated squared distance), and a shifted form such as
+//! `max_dot - s` for dot. Negated similarities invert the rule for cosine and break
+//! connectivity.
 
 use crate::config::VamanaParams;
 use crate::error::Result;
@@ -22,5 +28,5 @@ pub fn build_graph<C: Codec>(
     seed: u64,
     threads: usize,
 ) -> Result<Graph> {
-    todo!("U15 vamana-build: build_graph")
+    todo!("U14 vamana-build: build_graph")
 }
