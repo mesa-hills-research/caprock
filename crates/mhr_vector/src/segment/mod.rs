@@ -127,6 +127,13 @@ pub fn write_segment(
     writing::write(dir, source, build)
 }
 
+/// Conservative extra-memory allowance used by [`write_segment`]. Planning can
+/// binary-search this monotone function to ensure its outputs fit the same budget.
+/// Counts that overflow the estimate saturate at `u64::MAX`; validate `config` first.
+pub fn build_memory_required(config: &IndexConfig, vectors: u64, graph: bool) -> u64 {
+    writing::memory_required(config, vectors, graph)
+}
+
 /// An open sealed segment. `Sync`: searched by many threads at once.
 #[derive(Debug)]
 pub struct Segment {
@@ -370,3 +377,6 @@ fn decode_vector(bytes: &[u8], out: &mut [f32]) {
         *value = f32::from_le_bytes(word);
     }
 }
+
+#[cfg(test)]
+mod tests;

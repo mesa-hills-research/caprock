@@ -167,13 +167,15 @@ pub(super) fn write(
             })?;
         }
     }
-    // Graph workspace and language-sort workspace do not coexist.
+    // Graph workspace and language-sort workspace do not coexist. Bound worker
+    // scratch independently of the requested thread count, as the allowance above
+    // covers at most eight simultaneous searches. This cannot change graph bytes.
     if build.graph {
         let AnnKind::Vamana(params) = config.ann.kind else {
             unreachable!()
         };
         let graph = with_codec!(&codec, c => crate::vamana::build_graph(
-            c, &graph_codes, &params, seed, build.threads
+            c, &graph_codes, &params, seed, build.threads.min(8)
         ))?;
         // Stream Graph's documented representation, avoiding a second adjacency.
         section(&mut writer, SectionKind::Graph, |out| {
