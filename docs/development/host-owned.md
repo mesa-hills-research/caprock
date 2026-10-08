@@ -6,8 +6,7 @@ any unit or bucket whose contract it touches.
 
 | Path | Why |
 |---|---|
-| `docs/requirements.md`, `docs/development/units.md`, `docs/development/swarm-pack.md`, `docs/development/host-owned.md`, `README.md`, `docs/development/units.json` | the contract and the plan |
-| `contract/` | the frozen interface (`signatures.txt`) |
+| `README.md`, `docs/requirements.md`, `docs/development/` | the contract, the plan and the frozen interface (`signatures.txt`) |
 | `Cargo.toml`, `Cargo.lock`, `crates/*/Cargo.toml` | dependencies are an owner decision |
 | `crates/mhr_vector_oracle/` | ground truth |
 | `crates/mhr_vector_bench/` | the harness, the score, the conformance checks, the property tests |
@@ -18,6 +17,6 @@ any unit or bucket whose contract it touches.
 | `docs/` | details of the contract (the datasets) |
 | `.gitignore`, `rustfmt.toml` (if added), CI files | repository settings |
 
-Everything else under `crates/mhr_vector/src/` belongs to exactly one unit (docs/development/units.md;
-`src/store/mod.rs` to U17, which U18 may also extend). In the tidy and optimization
+Everything else under `crates/mhr_vector/src/` belongs to exactly one unit
+(docs/development/units.md; `src/store/mod.rs` to U17, which U18 may also extend). In the tidy and optimization
 phases a bucket's scope names the files it may change.
