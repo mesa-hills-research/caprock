@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# Prepares the mhr_vector swarm's datasets and ground truth on the build box.
+# Downloads and converts the benchmark datasets and computes their ground truth.
 #
-#   scripts/box_setup.sh [--skip-synth]
+#   scripts/setup_datasets.sh [--skip-synth]
 #
-# Layout (override the root with MHRV_ROOT):
-#   $MHRV_ROOT/venv        Python tools (h5py, numpy)
-#   $MHRV_ROOT/datasets    converted datasets (MHRV_DATASETS for the harness)
-#   $MHRV_ROOT/target-host the harness build
+# Variables:
+#   MHRV_DATASETS  where the datasets go (default: datasets/ in this repository)
+#   MHRV_VENV      the Python tools' virtual environment (default: .venv in this repository)
+#   THREADS        threads for ground truth (default: every CPU)
 # Disk: about 30 GB (downloads are deleted after conversion): ann sets ~3 GB, the 6M
-# synthetic set ~25 GB, ground truth < 1 GB.
+# synthetic set ~25 GB, ground truth < 1 GB. --skip-synth leaves out the 6M set.
 # The Voyage sets (scripts/voyage_sets.sh, build_code_set.py) need a Voyage key and are
 # built separately. Once they exist, a rerun of this script adds their ground truth.
 set -euo pipefail
 
-ROOT=${MHRV_ROOT:-/work/mhr-vector}
 REPO=$(cd "$(dirname "$0")/.." && pwd)
-DATASETS=$ROOT/datasets
-THREADS=${THREADS:-32}
+DATASETS=${MHRV_DATASETS:-$REPO/datasets}
+VENV=${MHRV_VENV:-$REPO/.venv}
+THREADS=${THREADS:-$(getconf _NPROCESSORS_ONLN)}
 SKIP_SYNTH=0
 for arg in "$@"; do
   case $arg in
@@ -26,14 +26,16 @@ for arg in "$@"; do
 done
 
 mkdir -p "$DATASETS"
-if [ ! -x "$ROOT/venv/bin/python" ]; then
-  python3 -m venv "$ROOT/venv"
-  "$ROOT/venv/bin/pip" install --quiet -r "$REPO/scripts/requirements.txt"
+if [ ! -x "$VENV/bin/python" ]; then
+  python3 -m venv "$VENV"
+  "$VENV/bin/pip" install --quiet -r "$REPO/scripts/requirements.txt"
 fi
-PY=$ROOT/venv/bin/python
+PY=$VENV/bin/python
 
-(cd "$REPO" && CARGO_TARGET_DIR=$ROOT/target-host cargo build --release -p mhr_vector_bench)
-BENCH=$ROOT/target-host/release/mhr_vector_bench
+(cd "$REPO" && cargo build --release -p mhr_vector_bench)
+TARGET=${CARGO_TARGET_DIR:-$REPO/target}
+case $TARGET in /*) ;; *) TARGET=$REPO/$TARGET ;; esac
+BENCH=$TARGET/release/mhr_vector_bench
 
 have() { [ -f "$DATASETS/$1/dataset.json" ]; }
 

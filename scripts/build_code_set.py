@@ -4,7 +4,7 @@ open-source repositories, embedded with Voyage (voyage-code-4), plus natural-lan
 queries taken from the code's own doc comments.
 
     # 1. See what it would embed and cost (no API calls; needs git and arko_index_cli):
-    python3 scripts/build_code_set.py --work /work/mhr-vector/code-work --out datasets \\
+    python3 scripts/build_code_set.py --work code-work --out datasets \\
         --arko-cli /path/to/arko_index_cli --dry-run
     # 2. Embed (reads VOYAGE_API_KEY from the environment; never prints it):
     VOYAGE_API_KEY=... python3 scripts/build_code_set.py --work ... --out datasets --arko-cli ...

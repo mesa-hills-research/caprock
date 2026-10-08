@@ -9,8 +9,7 @@ score-v2 sets.
     python3 scripts/build_voyage_set.py --name code-voyagecode4-200k --model voyage-code-4 \\
         --sources scripts/sources/code.json --target-chunks 200000 \\
         --queries code-doc-comments --query-count 2000 \\
-        --work /work/mhr-vector/voyage-work --out /work/mhr-vector/datasets \\
-        --arko-cli /work/arko-main/target/release/examples/arko_index_cli --dry-run
+        --work voyage-work --out datasets --arko-cli /path/to/arko_index_cli --dry-run
     # 2. Embed: the same command without --dry-run, with VOYAGE_API_KEY in the
     #    environment (never printed) and --max-tokens/--allow-over covering the estimate.
 

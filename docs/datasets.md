@@ -2,20 +2,20 @@
 
 What mhr_vector is measured on, why, and how the Voyage sets are built. Every set is a
 folder in the raw format of `crates/mhr_vector_oracle/src/dataset.rs`, under
-`$MHRV_DATASETS` (`/work/mhr-vector/datasets` on the box).
+`$MHRV_DATASETS` (default `datasets/`).
 
 | Set | Content | Vectors | Queries | Used by |
 |---|---|---|---|---|
-| `code-voyagecode4-200k` | arko_index chunks of 12 code checkouts in 8 languages, voyage-code-4, 1024 dims | ~200,000 | 2,000 doc-comment sentences | the score, guards, full suite |
-| `docs-voyage4-200k` | arko_index chunks of the Cloudflare docs and MDN, voyage-4, 1024 dims | ~57,000 (all there is) | 16 Cloudflare evaluation questions, 1,984 page headings | the score, guards, full suite |
-| `code-voyage4-1024` | arko_index chunks of 11 small pinned repositories, voyage-code-4 | ~11,500 | 1,000 doc-comment sentences | guards (searched flat), full suite |
+| `code-voyagecode4-200k` | arko_index chunks of 12 code checkouts in 8 languages, voyage-code-4, 1024 dims | 199,999 | 2,000 doc-comment sentences | the score, guards, full suite |
+| `docs-voyage4-200k` | arko_index chunks of the Cloudflare docs and MDN, voyage-4, 1024 dims | 34,601 (all there is) | 16 Cloudflare evaluation questions, 1,984 page titles and headings | the score, guards, full suite |
+| `code-voyage4-1024` | arko_index chunks of 11 small pinned repositories, voyage-code-4 | 11,467 | 1,000 doc-comment sentences | guards (searched flat), full suite |
 | `glove-100-angular`, `nytimes-256-angular` | ann-benchmarks | 1.18M, 290k | 10,000 | guards (the hard sets) |
 | `sift-128-euclidean` | ann-benchmarks | 1M | 10,000 | guards (L2) |
 | `synth-1024-6m` | `mhr_vector_bench synth`, clustered | 6M | 1,000 | full suite (scale, memory) |
 
-## Why the score uses Voyage sets (score-v2)
+## Why the score uses Voyage sets
 
-The owner switched the score to Voyage-only data on 2026-10-07. arko_index embeds with
+The score switched to Voyage-only data on 2026-10-07 (score-v2). arko_index embeds with
 Voyage, voyage-code-4 for code and voyage-4 for documentation text, so the store is tuned
 on the vectors it will actually hold. Code and documentation embeddings spread
 differently, and a score over both keeps an optimization from fitting one of them. The
@@ -26,12 +26,16 @@ score-v1 used 500,000 OpenAI text-embedding-3-large vectors of DBpedia cut to 10
 dimensions (`dbp3l-1024`) as a stand-in. Its download script, `scripts/fetch_openai3.py`,
 is in the history at c8ccae9.
 
-The Cloudflare docs and MDN hold about 57,000 chunks between them, so the docs set stays
-well under its 200,000 target. The name records the target the owner set.
+score-v2 measured the default Vamana configuration (`vamana-int8`) at the smallest beam
+reaching recall@10 0.95. score-v3 (2026-10-08) measures flat search with int8 codes
+(`flat-int8`), the configuration arko_index uses by default, on the same two sets.
+
+The Cloudflare docs and MDN hold 34,601 chunks between them, so the docs set stays well
+under its 200,000 target. The name records the target.
 
 ## Sources
 
-Code checkouts (`/work/safety/repos/` on the box), listed in `scripts/sources/code.json`:
+Code checkouts (under `$REPOS`), listed in `scripts/sources/code.json`:
 
 | Source | Checkout | Kept | Also excluded |
 |---|---|---|---|
@@ -55,7 +59,7 @@ WordPress contributes its JavaScript. Every source also skips `node_modules/`, `
 Documentation, listed in `scripts/sources/docs.json`:
 
 - **cloudflare**: `cloudflare/cloudflare-docs` at 791e4a8 (`production`,
-  `src/content/docs`), the folder at `~/Desktop/cloudflare-docs/docs`, its `*.md` and
+  `src/content/docs`), a copy of that folder at `$CF_DOCS/docs`, its `*.md` and
   `*.mdx` files. Legal and license pages are left out, as in arko's earlier index of the
   same folder: 6,872 files, 11,626 chunks.
 - **mdn**: `mdn__content`, `files/en-us/**/*.md` (about 14,700 pages).
@@ -102,42 +106,24 @@ path and commit and the full command are there too.
 
 ## Cost
 
-| Set | Chunks | Expected tokens | Price per million | Expected cost | Cap (`--max-tokens`) |
-|---|---|---|---|---|---|
-| code-voyagecode4-200k | 200,000 | ~36M (31M-42M) | $0.12 (voyage-code-4) | ~$4.35 ($3.70-$5.00) | 55M ($6.60) |
-| docs-voyage4-200k | ~57,000 | ~45M (43M-48M) | $0.06 (voyage-4) | ~$2.75 ($2.60-$2.90) | 70M ($4.20) |
+| Set | Chunks | Tokens billed | Price per million | Cost at standard rates |
+|---|---|---|---|---|
+| code-voyagecode4-200k | 199,999 | 35.5M | $0.12 (voyage-code-4) | $4.26 |
+| docs-voyage4-200k | 34,601 | 22.5M | $0.06 (voyage-4) | $1.35 |
 
-These are standard rates, before free tokens. voyage-code-4 comes with 200 million free
-tokens per account, which would cover the code set if they are unused.
-
-How the estimates were made (2026-10-07, no Voyage calls):
-
-1. Dry runs on local samples. For code, 20,000 chunks of 14 local repositories in the
-   same 8 languages (caddy, jsoup, gson, type-fest, vite, redis, zlib, leveldb, spdlog,
-   scrapy, flask, jquery, tokio, serde_json). For docs, all of the Cloudflare docs.
-2. Exact token counts of the planned texts with Voyage's tokenizer: the
-   `voyageai/voyage-4` `tokenizer.json` from Hugging Face (the same file as
-   voyage-code-4's), a Qwen2-style byte-level BPE, run in Python. Code came to 181 tokens
-   per chunk with the languages weighted equally, 3.47 bytes per token (C is denser at
-   2.67, since digits are single tokens). The Cloudflare chunks came to 7.12M tokens,
-   4.34 bytes per token. Queries average 16 tokens (code) and 6 (docs).
-3. Extrapolation. Code is 200,000 chunks at 181 tokens, with ±15% for the box's
-   repositories. MDN is taken as 153 MB of Markdown (the owner's figure) at 3,300 to
-   3,500 bytes per chunk (Cloudflare's chunk sizes for pages over 4 KB and over 8 KB,
-   MDN pages averaging 10 KB), so about 45,000 chunks, at 3.8 to 4.3 bytes per token.
-4. A billing check: arko's earlier build of the Cloudflare index was billed 99.3% of the
-   tokens its tokenizer counted beforehand.
-
-The dry run on the box gives the real counts. Its `estimated_tokens` uses 3 bytes per
-token, so it reads about 15% (code) and 35% (docs) above the bill.
+The bills include the queries. Before any call the builders estimate tokens at 3 bytes per
+token, which came out about 35% above these bills, and `--max-tokens` caps each set (55M
+tokens for code and 70M for docs in `scripts/voyage_sets.sh`). voyage-code-4 comes with
+200 million free tokens per account.
 
 ## Building them
 
 ```sh
-scripts/voyage_sets.sh --dry-run             # on the box: counts, estimates, plans
+scripts/voyage_sets.sh --dry-run             # counts, estimates, plans
 VOYAGE_API_KEY=... scripts/voyage_sets.sh    # embed both sets
 ```
 
-The script's variables (`MHRV_ROOT`, `REPOS`, `CF_DOCS`, `ARKO_CLI`) default to the box's
-layout. `scripts/box_setup.sh` computes the score's and guards' ground truth once the sets
-exist. `build_voyage_set.py --help` lists every option.
+The script needs `REPOS` (the code checkouts and `mdn__content`), `CF_DOCS` (the
+Cloudflare docs) and `ARKO_CLI` (arko_index's chunker). `scripts/setup_datasets.sh`
+computes the score's and guards' ground truth once the sets exist.
+`build_voyage_set.py --help` lists every option.

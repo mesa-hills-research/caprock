@@ -4,3 +4,6 @@
 /bench-cache
 *.hdf5
 __pycache__/
+/voyage-work
+/code-work
+/.venv
