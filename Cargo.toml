@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 publish = false
 
 # Every dependency is pure Rust with a safe API (no -sys crates, no build scripts
-# compiling C). Adding one is a reviewed decision: see REQUIREMENTS.md, "Dependencies".
+# compiling C). Adding one is a reviewed decision: see docs/requirements.md, "Dependencies".
 [workspace.dependencies]
 crc32fast = "1.4"
 serde = { version = "1.0.219", features = ["derive"] }

@@ -1,4 +1,4 @@
-//! Flat search and rescoring within one segment (unit U13; REQUIREMENTS.md, "Search").
+//! Flat search and rescoring within one segment (unit U13; docs/requirements.md, "Search").
 
 use crate::distance;
 use crate::error::Result;

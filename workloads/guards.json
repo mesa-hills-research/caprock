@@ -1,6 +1,6 @@
 {
   "name": "guards-v2",
-  "description": "Recall guards run by every gate after the build phase (SWARM-PACK.md, 'Gate'): the score's two Voyage sets with real path and language filters, k = 50, binary codes, flat search and updates, plus the small code set and the ann-benchmarks sets, default parameters. Each part's default-beam recall must meet REQUIREMENTS.md's table; the 'hard' sets (glove, nytimes) must reach 0.95 at some beam of the ladder and may not drop by more than 0.01 at the default beam.",
+  "description": "Recall guards run by every gate after the build phase (docs/development/swarm-pack.md, 'Gate'): the score's two Voyage sets with real path and language filters, k = 50, binary codes, flat search and updates, plus the small code set and the ann-benchmarks sets, default parameters. Each part's default-beam recall must meet docs/requirements.md's table; the 'hard' sets (glove, nytimes) must reach 0.95 at some beam of the ladder and may not drop by more than 0.01 at the default beam.",
   "parts": [
     {"dataset": "code-voyagecode4-200k", "queries": 1000, "config": "vamana-int8", "k": 10, "filters": ["lang:go", "lang:python", "path:redis", "path:tokio/tokio/src/sync", "path:tokio/tokio/src/signal"]},
     {"dataset": "code-voyagecode4-200k", "queries": 1000, "config": "vamana-int8", "k": 50},

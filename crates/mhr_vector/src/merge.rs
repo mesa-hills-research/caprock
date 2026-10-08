@@ -1,4 +1,4 @@
-//! Merge planning and the memory math (unit U16; REQUIREMENTS.md, "Maintenance" and
+//! Merge planning and the memory math (unit U16; docs/requirements.md, "Maintenance" and
 //! "Memory").
 //!
 //! Planning is a pure function of segment summaries, so the same segments always give
@@ -179,7 +179,7 @@ pub fn plan_compaction(
 }
 
 /// The most records one segment build may hold within `budget` bytes for this
-/// configuration (REQUIREMENTS.md, "Memory"). `Budget` when fewer than 1,024 fit.
+/// configuration (docs/requirements.md, "Memory"). `Budget` when fewer than 1,024 fit.
 pub fn max_segment_vectors(config: &IndexConfig, budget: u64) -> Result<u64> {
     config.validate()?;
     let minimum = build_allowance(config, 1024);

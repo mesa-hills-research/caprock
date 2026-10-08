@@ -822,7 +822,7 @@ pub fn prepare(a: &Args) -> R<Value> {
     Ok(marker)
 }
 
-/// `score`: the speed gate's number (SWARM-PACK.md, "The score"). Prints
+/// `score`: the speed gate's number (docs/development/swarm-pack.md, "The score"). Prints
 /// `{"primary", "components", "detail"}`; `primary` is 0 when a part cannot reach its
 /// recall target or any result breaks a rule.
 pub fn score(a: &Args) -> R<Value> {

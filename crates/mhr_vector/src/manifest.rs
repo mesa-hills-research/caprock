@@ -1,4 +1,4 @@
-//! Manifests, the `CURRENT` switch and the writer lock (unit U06; REQUIREMENTS.md,
+//! Manifests, the `CURRENT` switch and the writer lock (unit U06; docs/requirements.md,
 //! "Persistence").
 //!
 //! An index directory holds:

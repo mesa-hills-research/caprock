@@ -2,7 +2,7 @@
 
 19 units build `crates/mhr_vector` from its skeleton. Each unit owns files that no other
 unit touches, implements the `todo!("Unn ...")` stubs in them, and passes its host-owned
-acceptance test `crates/mhr_vector/tests/uNN_*.rs`. `units.json` is the same plan in
+acceptance test `crates/mhr_vector/tests/uNN_*.rs`. `docs/development/units.json` is the same plan in
 machine-readable form (id, scope, `depends_on`, acceptance command, stub prefix, wave).
 
 ## Rules for every unit
@@ -10,17 +10,17 @@ machine-readable form (id, scope, `depends_on`, acceptance command, stub prefix,
 - **Scope.** A unit's branch changes only its files (below). Anything else is refused by
   the gate before any check runs:
   - another unit's files;
-  - the host-owned paths in HOST_OWNED.md: tests, the oracle, the bench crate, `lib.rs`,
+  - the host-owned paths in docs/development/host-owned.md: tests, the oracle, the bench crate, `lib.rs`,
     `config.rs`, `types.rs`, `error.rs`, `distance.rs`'s signatures, `Cargo.toml`s,
     `Cargo.lock`, docs, workloads.
-- **The skeleton's signatures are the contract.** `contract/signatures.txt` freezes every
+- **The skeleton's signatures are the contract.** `docs/development/signatures.txt` freezes every
   `pub` item: fn signatures, trait methods, pub fields. A unit may add private items, and
   new `pub` items in its own files. It may not change or remove frozen ones (the gate runs
   `scripts/signatures.py --check`). Two exceptions: the fields of `Int8Codec`,
   `BinaryCodec` and their query types, and the private fields of every struct, belong to
   the unit that owns the file.
 - **When the contract is wrong** (a signature cannot work, or an acceptance test
-  contradicts REQUIREMENTS.md), the agent records it with `record_lesson` and stops with
+  contradicts docs/requirements.md), the agent records it with `record_lesson` and stops with
   that report. The host fixes the skeleton or the test and resets the unit; agents never
   edit tests.
 - **No `unsafe`, no new dependencies, `cargo fmt` clean, clippy clean** with
@@ -304,7 +304,7 @@ Sizes: S ≈ 100-250 lines, M ≈ 250-600, L ≈ 600-1,500 (estimates).
 
 ## After the units: tidy, milestones, optimization
 
-These phases are in SWARM-PACK.md. Their work items are **buckets**, not units:
+These phases are in docs/development/swarm-pack.md. Their work items are **buckets**, not units:
 
 - conformance failures by signature;
 - property-test failures;
@@ -320,10 +320,10 @@ When every unit has merged:
 2. turn every resulting warning into a tidy bucket;
 3. run the full conformance suite, the property tests and the guard suite;
 4. measure the first complete baseline (`workloads/full.json`), which the owner uses to
-   confirm the goals of REQUIREMENTS.md section 13.2.
+   confirm the goals of docs/requirements.md section 13.2.
 
 ### Stretch (not planned; needs the host's skeleton work first)
 - **U20 pq**: product quantization. `CodeKind::Pq { subspaces }` in `config.rs` (host), a
   `quant/pq.rs` codec (k-means codebooks, ADC tables), dispatch in `AnyCodec`.
 - **U21 rabitq**: if the binary codec's estimator is the limit.
-- **U22 mmap**: only after an approved `unsafe` exception (REQUIREMENTS.md section 16).
+- **U22 mmap**: only after an approved `unsafe` exception (docs/requirements.md section 16).

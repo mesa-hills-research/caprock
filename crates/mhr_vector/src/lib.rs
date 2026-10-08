@@ -16,7 +16,7 @@
 //!   model fails with [`Error::ModelMismatch`]. [`EmbeddingCache`] keeps vectors by
 //!   (model, content hash) so unchanged chunks are never embedded twice.
 //!
-//! The contract is REQUIREMENTS.md at the repository root; the oracle crate
+//! The contract is docs/requirements.md in the repository. The oracle crate
 //! (`mhr_vector_oracle`) defines ground truth.
 //!
 //! ```no_run

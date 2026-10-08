@@ -1,4 +1,4 @@
-//! The in-memory delta (unit U12; REQUIREMENTS.md, "Updates and visibility").
+//! The in-memory delta (unit U12; docs/requirements.md, "Updates and visibility").
 //!
 //! Recent upserts live here until the writer seals them into a segment. Snapshots hold a
 //! [`DeltaView`]: an immutable view that later changes never affect. Taking a view must

@@ -1,7 +1,7 @@
 //! The exact oracle for `mhr_vector`.
 //!
 //! This crate is deliberately simple and independent of `mhr_vector`: it shares the
-//! *specification* (REQUIREMENTS.md, "Scores" and "Filters"), not code. Everything here
+//! *specification* (docs/requirements.md, "Scores" and "Filters"), not code. Everything here
 //! favours obvious correctness over speed:
 //!
 //! - [`canonical`]: the canonical score arithmetic (the 16-lane dot product, squared L2,

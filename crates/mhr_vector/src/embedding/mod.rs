@@ -1,4 +1,4 @@
-//! The arko_index integration surface (unit U19; REQUIREMENTS.md, "Embedding models and
+//! The arko_index integration surface (unit U19; docs/requirements.md, "Embedding models and
 //! the cache").
 //!
 //! - [`EmbeddingModel`] describes where an index's vectors come from. It is saved in the

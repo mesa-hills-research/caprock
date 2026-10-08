@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Extract the interface of crates/mhr_vector/src: every `pub` fn signature (with its
 impl or trait context) and every pub struct/enum/trait/type/const/field line, whitespace
-normalized. The skeleton's list is frozen in contract/signatures.txt; the gate checks
+normalized. The skeleton's list is frozen in docs/development/signatures.txt; the gate checks
 that a branch still has every frozen line (new items are fine).
 
-    python3 scripts/signatures.py > contract/signatures.txt        # freeze (host only)
-    python3 scripts/signatures.py --check contract/signatures.txt  # gate: exit 1 on a change
+    python3 scripts/signatures.py > docs/development/signatures.txt        # freeze (host only)
+    python3 scripts/signatures.py --check docs/development/signatures.txt  # gate: exit 1 on a change
 """
 
 import os

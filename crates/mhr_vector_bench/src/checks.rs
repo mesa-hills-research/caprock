@@ -1,4 +1,4 @@
-//! The conformance checks: every behaviour REQUIREMENTS.md promises, checked against the
+//! The conformance checks: every behaviour docs/requirements.md promises, checked against the
 //! oracle through the public API. `mhr_vector_conform` runs each in its own process.
 //!
 //! A failure has a stable `kind` (the first word of its bucket signature); the check id

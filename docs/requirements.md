@@ -6,8 +6,9 @@ behaviour, the reasons, and the targets. Ground truth is the oracle crate
 (`crates/mhr_vector_oracle`): when this document and the oracle disagree, the oracle is
 the specification of results and this document is fixed.
 
-Status: groundwork for the swarm (2026-10-07). Nothing below is implemented yet; every
-function body in `mhr_vector` is a `todo!("Unn ...")` stub (see UNITS.md).
+The crate was built against this contract (written 2026-10-07, before any
+implementation), and `mhr_vector_conform` checks it against the oracle. The targets of
+section 13 were first estimates. [benchmarks.md](benchmarks.md) has the measured numbers.
 
 ## 1. What it is for
 
@@ -399,7 +400,7 @@ noted):
 
 ## 13. Targets
 
-Measured by `mhr_vector_bench` (README.md) on the build box: AMD EPYC 9354P, Ubuntu 24.04,
+Measured by `mhr_vector_bench` ([benchmarks.md](benchmarks.md)) on the build machine: AMD EPYC 9354P, Ubuntu 24.04,
 default release profile (no `target-cpu` flags: what users get), warm page cache, k = 10,
 default parameters unless noted.
 
@@ -445,7 +446,7 @@ These goals are the first estimates, made before any implementation exists. Afte
 first complete baseline the owner may adjust them, while recall floors are never lowered.
 The real sets stop at about 200,000 vectors, and synth-1024-6m covers Linux-scale corpora
 and beyond.
-The speed gate optimizes one number (SWARM-PACK.md, "The score").
+The speed gate optimizes one number (docs/development/swarm-pack.md, "The score").
 
 ## 14. Datasets
 
@@ -461,7 +462,7 @@ The speed gate optimizes one number (SWARM-PACK.md, "The score").
 
 The score switched to the two Voyage sets on 2026-10-07 (score-v2). Until then it used
 dbp3l-1024, OpenAI text-embedding-3-large vectors of DBpedia cut to 1024 dimensions.
-[docs/datasets.md](docs/datasets.md) gives the reasons, the sources and the sampling.
+[datasets.md](datasets.md) gives the reasons, the sources and the sampling.
 
 Datasets without real paths get synthetic paths and languages
 (`generate::path_for(i, PATH_SEED)`), so the standard filters have known selectivities:

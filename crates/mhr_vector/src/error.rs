@@ -1,4 +1,4 @@
-//! Errors. Every refusal of bad input is an `Err`, never a panic (REQUIREMENTS.md,
+//! Errors. Every refusal of bad input is an `Err`, never a panic (docs/requirements.md,
 //! "Errors").
 
 use std::path::PathBuf;

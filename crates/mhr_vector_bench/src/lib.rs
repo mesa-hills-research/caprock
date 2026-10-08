@@ -1,5 +1,6 @@
 //! Host tooling for `mhr_vector`: the benchmark harness and the conformance runner.
-//! See README.md (harness) and SWARM-PACK.md (how the swarm's gate uses them).
+//! See docs/benchmarks.md (the harness) and docs/development/swarm-pack.md (how the
+//! swarm's gate used them).
 
 #![forbid(unsafe_code)]
 

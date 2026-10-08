@@ -1,9 +1,9 @@
-//! Vamana graphs (units U14 build, U15 search; REQUIREMENTS.md, "Approximate search").
+//! Vamana graphs (units U14 build, U15 search; docs/requirements.md, "Approximate search").
 //!
 //! A segment's graph is a fixed-degree adjacency array over its ordinals: row `i` holds
 //! node `i`'s out-neighbours followed by [`NO_NEIGHBOR`] padding. Construction is
 //! DiskANN's Vamana (greedy search + robust prune with `alpha`), made deterministic
-//! (REQUIREMENTS.md, "Determinism"): the same codes, parameters and seed give the same
+//! (docs/requirements.md, "Determinism"): the same codes, parameters and seed give the same
 //! graph for any thread count.
 
 pub mod build;

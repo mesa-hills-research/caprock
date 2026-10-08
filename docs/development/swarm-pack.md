@@ -13,7 +13,7 @@ How this repository maps onto the `agent_swarm` engine. The engine is
 6. **optimize-build**, opt-in: the build score;
 7. **done**.
 
-There is no architect phase. The skeleton, the contract (`contract/signatures.txt`) and
+There is no architect phase. The skeleton, the contract (`docs/development/signatures.txt`) and
 the acceptance tests in this repository are the architect's output, written by the host.
 
 ## 1. What exists, and what the pack must add
@@ -24,15 +24,15 @@ the acceptance tests in this repository are the architect's output, written by t
 |---|---|
 | the crate skeleton | `crates/mhr_vector` |
 | per-unit acceptance tests | `crates/mhr_vector/tests/uNN_*.rs` |
-| the unit plan | `units.json`, `UNITS.md` |
-| the frozen interface | `contract/signatures.txt`, checked with `scripts/signatures.py` |
+| the unit plan | `docs/development/units.json`, `docs/development/units.md` |
+| the frozen interface | `docs/development/signatures.txt`, checked with `scripts/signatures.py` |
 | the oracle | `crates/mhr_vector_oracle` |
 | the conformance runner (the swarm's oracle) | `mhr_vector_conform` |
 | the harness, the score and the build score | `mhr_vector_bench` |
 | property tests | `crates/mhr_vector_bench/tests/properties.rs` |
 | workloads | `workloads/` |
 | dataset scripts | `scripts/` |
-| host-owned paths | `HOST_OWNED.md` |
+| host-owned paths | `docs/development/host-owned.md` |
 
 **The pack** (`arko_workflows/examples/agent_swarm/packs/vector/`, about crate_fix's size
 plus ts_port's benchmark logic):
@@ -64,7 +64,7 @@ plus ts_port's benchmark logic):
 | Setting | Default | Meaning |
 |---|---|---|
 | `source` | none | This repository (a folder or a `git bundle`), copied once as the run's `main`. |
-| `datasets` | `/work/mhr-vector/datasets` | `MHRV_DATASETS` for every harness and conformance command. |
+| `datasets` | `$MHRV_ROOT/datasets` | `MHRV_DATASETS` for every harness and conformance command. |
 | `score_workload` | `workloads/score.json` | The speed gate's workload (frozen: its fingerprint is recorded in prep). |
 | `build_score_workload` | `workloads/build-score.json` | The build phase's workload. |
 | `guards_workload` | `workloads/guards.json` | The recall guards (milestones, optimization gates). |
@@ -85,11 +85,11 @@ U14, U17 and U18, and optimization.
 ## 3. Prep (host, no models)
 
 1. Copy `source` into `work/main` (git). Check that the skeleton commit is there and that
-   `python3 scripts/signatures.py --check contract/signatures.txt` passes.
+   `python3 scripts/signatures.py --check docs/development/signatures.txt` passes.
 2. Check the toolchain (rustc ≥ 1.89), `perf` (with `perf_event_paranoid` ≤ 1), `taskset`
    and Python 3.
 3. Check the datasets with `mhr_vector_bench datasets`. Missing ones are reported, with
-   `scripts/box_setup.sh` and `scripts/voyage_sets.sh` as the fixes. The optimization
+   `scripts/setup_datasets.sh` and `scripts/voyage_sets.sh` as the fixes. The optimization
    phases need the score's two sets (`code-voyagecode4-200k`, `docs-voyage4-200k`). Any
    other missing set only skips its guard parts, with a notice in the status.
 4. Build the host tools from `main`: `mhr_vector_bench`, `mhr_vector_conform`. Record
@@ -99,7 +99,7 @@ U14, U17 and U18, and optimization.
    empty: only the oracle's and the bench crate's own tests pass.
 5. Record the fingerprints of the workload files (`Workload::fingerprint`). A changed
    workload during a run is refused, as champion mode refuses a changed pack.
-6. Plan the units from `units.json`.
+6. Plan the units from `docs/development/units.json`.
 
 ## 4. The build phase (units)
 
@@ -110,9 +110,9 @@ bucket after the phase, and the status names the blocked units.
 
 **The prompt**:
 
-- the unit's section of UNITS.md;
+- the unit's section of docs/development/units.md;
 - "Rules for every unit";
-- the REQUIREMENTS.md sections it implements;
+- the docs/requirements.md sections it implements;
 - its acceptance command;
 - its scope.
 
@@ -133,7 +133,7 @@ lesson and finish with that report.
      comments (the compiler enforces `forbid` too);
    - `Cargo.lock` byte-identical to main's.
 5. `cargo clippy --workspace --all-targets --all-features -- -D warnings`.
-6. `python3 scripts/signatures.py --check contract/signatures.txt`.
+6. `python3 scripts/signatures.py --check docs/development/signatures.txt`.
 7. **Stubs**: no `todo!("<unit id> ` left in the unit's scope.
 8. **The unit's acceptance test** passes: `cargo test -p mhr_vector --features internals --test uNN_*`.
 9. **No test regressions**: `cargo test --workspace --all-features --no-fail-fast`, and
@@ -195,14 +195,14 @@ On main:
 The reports (results.md) go to `reports/`; the owner gets a notification with the summary
 table.
 
-A recall floor broken (REQUIREMENTS.md section 13.1) becomes a `guard` bucket:
+A recall floor broken (docs/requirements.md section 13.1) becomes a `guard` bucket:
 
 - signature `guard: <dataset>/<config>/<k or filter>`;
 - example: the measured and required recall;
 - scope: `vamana/`, `quant/`, `store/search.rs`, `merge.rs`.
 
 The milestone repeats until the guards pass. Then the baseline score of main is recorded:
-`prepare`, then `score` 5 times. The owner may adjust the goals of REQUIREMENTS.md section
+`prepare`, then `score` 5 times. The owner may adjust the goals of docs/requirements.md section
 13.2 then.
 
 ## 7. The optimization phase
@@ -227,7 +227,7 @@ for code and voyage-4 for documentation, so the score measures those. Code and
 documentation embeddings spread differently, and one score over both keeps an
 optimization from fitting either alone. The geometric mean counts an equal relative gain
 on either part the same. score-v1 measured 500,000 OpenAI text-embedding-3-large vectors
-of DBpedia (`dbp3l-1024`) as a stand-in. [docs/datasets.md](docs/datasets.md) describes
+of DBpedia (`dbp3l-1024`) as a stand-in. [docs/datasets.md](../datasets.md) describes
 the sets.
 
 - **Building the indexes.** `prepare` builds each part's index through the public API, in
@@ -245,7 +245,7 @@ the sets.
   threshold is fixed.
 - **The build.** The workspace release profile (opt-level 3, line tables for `perf`), no
   `RUSTFLAGS` and no `target-cpu`: what a user's `cargo build --release` produces. If the
-  owner pre-approves a safe-API SIMD dispatch crate (REQUIREMENTS.md section 16), runtime
+  owner pre-approves a safe-API SIMD dispatch crate (docs/requirements.md section 16), runtime
   dispatch is how faster instructions are reached.
 - **Pinned.** `bench_cpus` are 4 physical cores kept free of everything else. The timed
   pass is single-threaded, and the recall passes use the other 3 cores.
@@ -379,17 +379,19 @@ Beside the engine's shell and `record_lesson`:
 - its own `CARGO_TARGET_DIR`;
 - `CARGO_BUILD_JOBS=jobs_per_worker`;
 - `MHRV_DATASETS`;
-- `MHRV_SCRATCH` on `/work`;
+- `MHRV_SCRATCH` on the work disk;
 - pinned to `build_cpus`.
 
 ## 9. The box
 
+`$MHRV_ROOT` is the run's work folder on the build machine.
+
 | What | Where |
 |---|---|
-| this repository | `/work/mhr-vector/repo`: from a bundle (`git bundle create vector.bundle --all` here, copied over; nothing is pushed) |
-| datasets, Python tools, the harness build | `/work/mhr-vector/{datasets,venv,target-host}` (`scripts/box_setup.sh`, about 30 GB, mostly downloads) |
-| the Voyage sets | `/work/mhr-vector/datasets/{code-voyagecode4-200k,docs-voyage4-200k,code-voyage4-1024}`, about 2 GB with their caches (the owner runs `scripts/voyage_sets.sh` and `scripts/build_code_set.py` with the Voyage key) |
-| the run | `/work/mhr-vector/run` (settings, state, `work/main`, worktrees, reports) |
+| this repository | `$MHRV_ROOT/repo`: from a bundle (`git bundle create vector.bundle --all` here, copied over; nothing is pushed) |
+| datasets, Python tools, the harness build | `$MHRV_ROOT/{datasets,venv,target-host}` (`scripts/setup_datasets.sh`, about 30 GB, mostly downloads) |
+| the Voyage sets | `$MHRV_ROOT/datasets/{code-voyagecode4-200k,docs-voyage4-200k,code-voyage4-1024}`, about 2 GB with their caches (the owner runs `scripts/voyage_sets.sh` and `scripts/build_code_set.py` with the Voyage key) |
+| the run | `$MHRV_ROOT/run` (settings, state, `work/main`, worktrees, reports) |
 
 **CPUs**: EPYC 9354P, 32 cores and 64 threads. `bench_cpus` 28-31 with siblings 60-63
 idle; `build_cpus` 0-27 and 32-59. 755 GB of RAM leave 16 workers with plenty of room: a
@@ -400,15 +402,14 @@ gate's builds and indexes take a few GB each.
 ```sh
 cargo build --release -p arko_workflows --example agent_swarm
 BIN=$PWD/target/release/examples/agent_swarm
-$BIN vector init /work/mhr-vector/run --source /work/mhr-vector/repo --datasets /work/mhr-vector/datasets
-$BIN vector check /work/mhr-vector/run       # prep: tools, datasets, passing sets; no model calls
-$BIN vector selftest /work/mhr-vector/run    # the gate on scripted branches (below)
-nohup $BIN vector run /work/mhr-vector/run > /work/mhr-vector/run/run.log 2>&1 &
+$BIN vector init $MHRV_ROOT/run --source $MHRV_ROOT/repo --datasets $MHRV_ROOT/datasets
+$BIN vector check $MHRV_ROOT/run       # prep: tools, datasets, passing sets; no model calls
+$BIN vector selftest $MHRV_ROOT/run    # the gate on scripted branches (below)
+nohup $BIN vector run $MHRV_ROOT/run > $MHRV_ROOT/run/run.log 2>&1 &
 ```
 
 **The selftest.** Scripted branches are made from the throwaway reference implementation
-kept outside the repository (`~/Desktop/mhr-work/vector-validation/reference.patch`, never
-in the run's repository or bundles). Each unit's files from the patch must pass that
+kept outside the repository (a patch, never in the run's repository or bundles). Each unit's files from the patch must pass that
 unit's gate; a mutated copy must be rejected:
 
 - a flipped comparison in `topk`, which conformance and the acceptance tests catch;

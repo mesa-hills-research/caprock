@@ -1,4 +1,4 @@
-//! Searching a snapshot (unit U18; REQUIREMENTS.md, "Search").
+//! Searching a snapshot (unit U18; docs/requirements.md, "Search").
 //!
 //! For each segment: compile the filter; when the search is exact, or the segment has no
 //! graph, or at most `filter_flat_below` live records match, search it flat (exact search
