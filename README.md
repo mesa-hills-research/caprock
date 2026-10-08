@@ -37,11 +37,11 @@ Single-thread search, k = 10, on 1024-dimensional embeddings of 199,999 code chu
 | Vamana graph, int8 codes | code | 0.966 | 1,018 | 0.95 ms |
 | Vamana graph, int8 codes | docs | 0.999 | 2,223 | 0.41 ms |
 
-Measured on 6 vCPUs of an Intel Core i9-13980HX. Flat search time grows with the index,
-about 65 ns per vector with int8 codes, while graph search stays fast as the index grows.
-Graph builds run in parallel: a graph over 50,000 code vectors took 236.6 s on one thread
-and 18.9 s on 16. Every measurement, the machines and the method are in
-[docs/benchmarks.md](docs/benchmarks.md).
+Measured on 6 vCPUs of an Intel Core i9-13980HX. Flat search reads every code on each
+query, about 65 ns per vector with int8 codes, and graph search visits a small part of the
+index. Graph builds run in parallel: on a 32-core AMD EPYC, a graph over 50,000 code
+vectors took 236.6 s on one thread and 18.9 s on 16. Every measurement, the machines and
+the method are in [docs/benchmarks.md](docs/benchmarks.md).
 
 ## Installation
 
