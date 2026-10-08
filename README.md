@@ -27,7 +27,7 @@ acceptance test per unit. [docs/development](docs/development/README.md) tells h
 
 arko_index uses flat search with int8 codes by default. Its recall@10 was 1.0 on both sets
 below, a query costs one pass over the codes, and merging segments builds no graph. The
-Vamana graph is there for high-QPS serving, at about 34 times the flat query rate on the
+Vamana graph is there for high-QPS serving, at about 14 times the flat query rate on the
 code set with recall@10 of 0.97. With the default configuration every segment of 20,000
 vectors or more gets one.
 
@@ -38,11 +38,12 @@ and 34,601 documentation chunks:
 
 | Search | Set | Recall@10 | Queries/s | p50 |
 |---|---|---:|---:|---:|
-| Flat, int8 codes | code | 1.000 | 13 | 75.8 ms |
-| Flat, int8 codes | docs | 1.000 | 73 | 13.8 ms |
-| Exact, f32 | code | 1.000 | 9.5 | 104 ms |
-| Vamana graph, int8 codes | code | 0.966 | 440 | 2.2 ms |
-| Vamana graph, int8 codes | docs | 0.999 | 794 | 1.1 ms |
+| Flat, int8 codes | code | 1.000 | 75 | 13.4 ms |
+| Flat, int8 codes | docs | 1.000 | 437 | 2.3 ms |
+| Flat, binary codes | code | 0.996 | 110 | 9.0 ms |
+| Exact, f32 | code | 1.000 | 38 | 26.2 ms |
+| Vamana graph, int8 codes | code | 0.966 | 1,018 | 0.95 ms |
+| Vamana graph, int8 codes | docs | 0.999 | 2,223 | 0.41 ms |
 
 Measured on a 6-vCPU virtual machine on an Intel Core i9-13980HX. Graph builds write the
 same bytes at any thread count: on an AMD EPYC 9354P a graph over 50,000 code vectors took

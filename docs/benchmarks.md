@@ -12,24 +12,29 @@ and build times. [datasets.md](datasets.md) describes the sets:
 
 One thread unless noted, k = 10, on this machine (see [Method](#method)). `flat-int8`
 scans the int8 codes of every vector and rescores the best 40 with the full-precision
-vectors. `exact` is `IndexConfig::exact`: f32 codes, results equal to the oracle's bit for
-bit. `vamana-int8` is the default configuration, a Vamana graph over int8 codes, at its
-default beam of 64.
+vectors, and `flat-binary` scans binary codes and rescores the best 160. `exact` is
+`IndexConfig::exact`: f32 codes, results equal to the oracle's bit for bit. `vamana-int8`
+is the default configuration, a Vamana graph over int8 codes, at its default beam of 64.
 
 | Configuration | Set | Recall@10 | QPS | p50 | p99 | QPS, 6 threads |
 |---|---|---:|---:|---:|---:|---:|
-| `flat-int8` | code | 1.0000 | 13.1 | 75.8 ms | 86.3 ms | 60.5 |
-| `exact` | code | 1.0000 | 9.5 | 104.2 ms | 112.6 ms | 42.6 |
-| `vamana-int8` | code | 0.9655 | 440 | 2.17 ms | 4.73 ms | 2,255 |
-| `flat-int8` | docs | 1.0000 | 73.2 | 13.8 ms | 15.2 ms | 353 |
-| `exact` | docs | 1.0000 | 52.3 | 19.0 ms | 21.3 ms | 264 |
-| `vamana-int8` | docs | 0.9987 | 794 | 1.15 ms | 3.09 ms | 4,165 |
+| `flat-int8` | code | 1.0000 | 75.1 | 13.4 ms | 14.9 ms | 361 |
+| `flat-binary` | code | 0.9957 | 110 | 9.03 ms | 10.1 ms | 555 |
+| `exact` | code | 1.0000 | 38.3 | 26.2 ms | 28.1 ms | 121 |
+| `vamana-int8` | code | 0.9655 | 1,018 | 0.95 ms | 2.01 ms | 4,835 |
+| `flat-int8` | docs | 1.0000 | 437 | 2.27 ms | 2.81 ms | 2,022 |
+| `flat-binary` | docs | 0.9998 | 590 | 1.69 ms | 1.85 ms | 2,929 |
+| `exact` | docs | 1.0000 | 212 | 4.71 ms | 5.23 ms | 737 |
+| `vamana-int8` | docs | 0.9987 | 2,223 | 0.41 ms | 1.05 ms | 11,167 |
 
 Flat search reads every code on every query, so its time grows with the index: about
-0.4 µs per vector with int8 codes and 0.5 µs with f32 here. The flat scan scores codes
-with the portable query kernel. The AVX2 kernels added in f7ad141 cover code-to-code
-scores (graph construction), and extending them to query scores is the next step for flat
-search.
+65 ns per vector with int8 codes, 45 ns with binary codes and 130 ns with f32 codes here.
+The scans use AVX2 kernels, which score four int8 or f32 codes at a time while
+prefetching the codes ahead, or eight binary codes in the lanes of one register. Their
+scores have the bits of the portable kernels, so every machine returns the same results.
+Graph search scores one code at a time with the same int8 kernel. Before these kernels
+(e660b65), flat-int8 took 75.3 ms per query on the code set, flat-binary 40.5 ms, exact
+104.5 ms and `vamana-int8` 2.04 ms (467 QPS).
 
 ### Vamana beams
 
@@ -38,16 +43,16 @@ rescores (40 for k = 10), so beams of 40 and below behave alike.
 
 | Beam | Code recall@10 | Code QPS | Code p50 | Docs recall@10 | Docs QPS | Docs p50 |
 |---:|---:|---:|---:|---:|---:|---:|
-| 40 | 0.9251 | 682 | 1.39 ms | 0.9964 | 1,202 | 0.77 ms |
-| 48 | 0.9416 | 587 | 1.64 ms | 0.9975 | 1,035 | 0.89 ms |
-| 56 | 0.9554 | 525 | 1.82 ms | 0.9981 | 932 | 0.98 ms |
-| 64 | 0.9655 | 464 | 2.07 ms | 0.9987 | 845 | 1.08 ms |
-| 80 | 0.9748 | 374 | 2.55 ms | 0.9991 | 701 | 1.31 ms |
-| 96 | 0.9815 | 319 | 3.04 ms | 0.9994 | 624 | 1.48 ms |
-| 128 | 0.9900 | 240 | 4.03 ms | 0.9996 | 480 | 1.89 ms |
+| 40 | 0.9251 | 1,502 | 0.63 ms | 0.9964 | 3,213 | 0.29 ms |
+| 48 | 0.9416 | 1,311 | 0.73 ms | 0.9975 | 2,749 | 0.34 ms |
+| 56 | 0.9554 | 1,159 | 0.83 ms | 0.9981 | 2,474 | 0.37 ms |
+| 64 | 0.9655 | 1,036 | 0.93 ms | 0.9987 | 2,249 | 0.41 ms |
+| 80 | 0.9748 | 837 | 1.14 ms | 0.9991 | 1,854 | 0.50 ms |
+| 96 | 0.9815 | 732 | 1.29 ms | 0.9994 | 1,685 | 0.55 ms |
+| 128 | 0.9900 | 544 | 1.78 ms | 0.9996 | 1,374 | 0.67 ms |
 
-Beam 64 appears twice in the runs (as the default and on the ladder), at 440 and 464 QPS
-for code and 794 and 845 for docs, which gives an idea of the noise.
+Beam 64 appears twice in the runs (as the default and on the ladder), at 1,018 and 1,036
+QPS for code and 2,223 and 2,249 for docs, which gives an idea of the noise.
 
 ## Builds
 
@@ -100,8 +105,8 @@ The recall guards of the same run measured `flat-int8` on docs at recall@10 1.00
 - **This machine:** a 13th Gen Intel Core i9-13980HX, 6 vCPUs of a VMware virtual
   machine (one thread per core, AVX2 and FMA), 22 GiB of memory, Ubuntu 26.04 on Linux
   7.0. Rust 1.97.1, the release profile without `target-cpu` flags (pulp picks AVX2 at run
-  time). The library code of 464a273, measured on 2026-10-08 with no other heavy job
-  running.
+  time). The search tables are the library code of 8622ce5 and the build table that of
+  464a273 (the commits between them changed search only), all measured on 2026-10-08.
 - **Build machine:** an AMD EPYC 9354P (32 cores, 64 threads), 755 GB of memory, Ubuntu
   24.04, Rust 1.99. The score ran pinned to four cores reserved for it, with their second
   threads idle. The graph builds were pinned with `taskset`: one core for 1 thread, and 12

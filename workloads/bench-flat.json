@@ -1,10 +1,12 @@
 {
   "name": "bench-flat",
-  "description": "docs/benchmarks.md: flat search with int8 codes (flat-int8) and exact search (f32) on the two Voyage sets, single-thread and 6-thread QPS.",
+  "description": "docs/benchmarks.md: flat search with int8 codes (flat-int8) and binary codes (flat-binary), and exact search (f32), on the two Voyage sets, single-thread and 6-thread QPS.",
   "parts": [
     {"dataset": "code-voyagecode4-200k", "queries": 1000, "config": "flat-int8", "k": 10},
+    {"dataset": "code-voyagecode4-200k", "queries": 1000, "config": "flat-binary", "k": 10},
     {"dataset": "code-voyagecode4-200k", "queries": 1000, "config": "exact", "k": 10},
     {"dataset": "docs-voyage4-200k", "queries": 2000, "config": "flat-int8", "k": 10},
+    {"dataset": "docs-voyage4-200k", "queries": 2000, "config": "flat-binary", "k": 10},
     {"dataset": "docs-voyage4-200k", "queries": 2000, "config": "exact", "k": 10}
   ],
   "build": {"threads": 6, "budget": 2147483648, "batch": 10000, "commit_every": 80000},
