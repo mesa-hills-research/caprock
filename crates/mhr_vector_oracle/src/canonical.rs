@@ -1,4 +1,4 @@
-//! Canonical score arithmetic (docs/requirements.md, "Scores").
+//! Canonical score arithmetic.
 //!
 //! The canonical dot product keeps 16 `f32` lane accumulators. Element `i` is added to
 //! lane `i % 16`, in increasing `i`, as `acc = acc + (a[i] * b[i])` with the product and

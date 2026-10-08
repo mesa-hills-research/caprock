@@ -1,6 +1,6 @@
 [package]
 name = "mhr_vector_bench"
-description = "Host tooling for mhr_vector: the benchmark harness (datasets, ground truth, build/query/update/open measurements, the speed score) and the conformance runner"
+description = "The vector store's benchmark harness (datasets, ground truth, build, query, update and open measurements) and conformance checks"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

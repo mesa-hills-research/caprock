@@ -1,5 +1,4 @@
-//! Errors. Every refusal of bad input is an `Err`, never a panic (docs/requirements.md,
-//! "Errors").
+//! Errors. Every refusal of bad input is an `Err`, never a panic.
 
 use std::path::PathBuf;
 
@@ -8,7 +7,7 @@ use crate::embedding::EmbeddingModel;
 /// The result type of this crate.
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-/// Why a vector was refused. Mirrors the oracle's `VectorProblem`.
+/// Why a vector was refused.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum VectorError {
     #[error("expected {expected} dimensions, found {found}")]
@@ -37,7 +36,7 @@ pub enum Error {
     /// A file failed a format or checksum check.
     #[error("corrupt index file {path}: {detail}")]
     Corrupt { path: PathBuf, detail: String },
-    /// A file was written by a newer format version.
+    /// A file was written by another format version.
     #[error("unsupported index format version {found} (this build reads {supported})")]
     UnsupportedFormat { found: u32, supported: u32 },
     /// A vector (record or query) was refused.

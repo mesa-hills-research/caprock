@@ -10,21 +10,21 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/mesa-hills-research/mhr_vector"
 publish = false
 
-# Every dependency is pure Rust with a safe API (no -sys crates, no build scripts
-# compiling C). Adding one is a reviewed decision: see docs/requirements.md, "Dependencies".
+# Every dependency is pure Rust with a safe API: no -sys crates and no build scripts
+# compiling C.
 [workspace.dependencies]
 crc32fast = "1.4"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 thiserror = "2.0.12"
-# Dev and host tooling only.
+# Tests only.
 proptest = "1.6"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
 
 [profile.release]
-debug = "line-tables-only"   # perf profiles with symbols; no effect on speed
+debug = "line-tables-only"   # symbols for perf profiles, at no cost in speed
 
 [profile.test]
-opt-level = 2                # the oracle-backed tests scan many vectors
+opt-level = 2                # the tests scan many vectors

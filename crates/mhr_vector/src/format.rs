@@ -1,4 +1,4 @@
-//! Section files and file-system helpers (unit U05; docs/requirements.md, "On-disk format").
+//! Section files and file-system helpers.
 //!
 //! A section file is a header, aligned sections, and a section table:
 //!

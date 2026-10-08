@@ -1,4 +1,4 @@
-//! Readers (unit U18).
+//! Readers.
 
 use std::fs;
 use std::io::ErrorKind;

@@ -1,8 +1,8 @@
-//! The exact oracle for `mhr_vector`.
+//! The tests' reference implementation: a brute-force store with exact results, and the
+//! tools the tests and benchmarks build on.
 //!
-//! This crate is deliberately simple and independent of `mhr_vector`: it shares the
-//! *specification* (docs/requirements.md, "Scores" and "Filters"), not code. Everything here
-//! favours obvious correctness over speed:
+//! It shares no code with the store, only the documented score arithmetic and filter
+//! semantics, and favours obvious correctness over speed:
 //!
 //! - [`canonical`]: the canonical score arithmetic (the 16-lane dot product, squared L2,
 //!   normalization, validation). Scores an index returns must equal these bit for bit
@@ -14,7 +14,7 @@
 //!   counts, score exactness, exact equality and recall.
 //! - [`generate`]: seeded generators for vectors, paths, filters and operation sequences, with
 //!   a PRNG defined here so datasets never change with a dependency upgrade.
-//! - [`dataset`]: the raw on-disk dataset format the benchmark harness and scripts share.
+//! - [`dataset`]: the raw on-disk dataset format of the benchmark harness.
 //! - [`scenario`]: operation sequences run against any index through
 //!   [`scenario::IndexUnderTest`], with the oracle replaying them.
 //! - [`gt`]: batch ground truth over a dataset (the same arithmetic as [`Oracle::search`],

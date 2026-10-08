@@ -1,4 +1,4 @@
-//! Snapshot accessors (unit U17; searching is U18's `search.rs`).
+//! Snapshot accessors (searching is in `search.rs`).
 
 use std::collections::HashSet;
 use std::path::Path;

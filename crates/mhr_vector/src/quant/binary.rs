@@ -1,4 +1,4 @@
-//! Centred binary quantization (unit U09).
+//! Centred binary quantization.
 //!
 //! Codes contain little-endian sign words followed by two little-endian `f32`s:
 //! the centred vector's norm and its inner product with the training centre. These

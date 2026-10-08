@@ -1,4 +1,4 @@
-//! Int8 scalar quantization (unit U08).
+//! Int8 scalar quantization.
 //!
 //! Each dimension has a trained minimum and a step size spanning its observed range
 //! with 256 unsigned byte values. Codes contain exactly one byte per dimension.

@@ -1,5 +1,4 @@
-//! Codecs: the compact codes segments keep in memory to find candidates (unit U07 for this
-//! file; U08 int8; U09 binary; docs/requirements.md, "Quantization").
+//! Codecs: the compact codes segments keep in memory to find candidates.
 //!
 //! A codec is trained once per segment, deterministically, on a sample of the segment's
 //! stored vectors ([`training_sample`]); its parameters are saved in the segment. Codes

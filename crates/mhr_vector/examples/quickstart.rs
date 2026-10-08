@@ -1,5 +1,5 @@
-//! The README's example: a flat index with int8 codes (arko_index's configuration), two
-//! records, a filtered search, a commit and a reader. Run it with
+//! The README's example: a flat index with int8 codes, two records, a filtered search, a
+//! commit and a reader. Run it with
 //! `cargo run -p mhr_vector --example quickstart`.
 
 use mhr_vector::{

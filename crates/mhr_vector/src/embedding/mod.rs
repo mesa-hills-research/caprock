@@ -1,15 +1,14 @@
-//! The arko_index integration surface (unit U19; docs/requirements.md, "Embedding models and
-//! the cache").
+//! Embedding models and the embedding cache.
 //!
 //! - [`EmbeddingModel`] describes where an index's vectors come from. It is saved in the
-//!   index configuration; opening an index for a model whose document vectors differ
+//!   index configuration. Opening an index for a model whose document vectors differ
 //!   ([`EmbeddingModel::requires_reembed`]) fails with `ModelMismatch`, and the caller
 //!   re-embeds into a new index.
-//! - [`EmbeddingCache`] keeps vectors by (model, content hash), so a chunk whose rendered
-//!   text did not change is never embedded twice, across re-indexing and across indexes.
+//! - [`EmbeddingCache`] keeps vectors by (model, content hash), so a text that did not
+//!   change is embedded once, across re-indexing and across indexes.
 //!
-//! This crate never calls a provider: the caller (arko_index, through arko_ai's Voyage
-//! client) embeds, and hands vectors to the cache and the store.
+//! The caller embeds texts with its provider and hands the vectors to the cache and the
+//! store.
 
 mod cache;
 
@@ -19,8 +18,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 
-/// SHA-256 (or any 32-byte digest the caller fixes) of the exact text sent to the model
-/// (arko_index's rendered chunk: header plus source). The caller computes it.
+/// SHA-256 (or any 32-byte digest the caller fixes) of the exact text sent to the model.
+/// The caller computes it.
 pub type ContentHash = [u8; 32];
 
 /// Which side of retrieval a text is embedded for.
@@ -34,11 +33,11 @@ pub enum InputType {
 /// Where an index's vectors come from.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct EmbeddingModel {
-    /// `voyage` (later also local providers).
+    /// The provider, e.g. `voyage`.
     pub provider: String,
     /// The provider's model name, e.g. `voyage-code-4`.
     pub model: String,
-    /// Output dimension (voyage-code-4: 256, 512, 1024 (default) or 2048).
+    /// Output dimension.
     pub dimensions: u32,
     /// The provider's input type for documents (`document` for Voyage), if it has one.
     #[serde(default)]
@@ -50,9 +49,9 @@ pub struct EmbeddingModel {
     pub output_dtype: String,
     /// Whether the provider returns unit-length vectors.
     pub normalized: bool,
-    /// The caller's name for how chunks are rendered into text (e.g.
-    /// `arko_index/chunk-v1`: path, a newline, the source). Changing the rendering
-    /// changes every vector, so it is part of the model's identity.
+    /// The caller's name for how records are rendered into the text that is embedded
+    /// (for example a path, a newline and the source). Changing the rendering changes
+    /// every vector, so it is part of the model's identity.
     pub text_format: String,
     /// A provider-side model revision, when the provider exposes one.
     #[serde(default)]

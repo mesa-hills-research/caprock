@@ -1,4 +1,4 @@
-//! Filter semantics (docs/requirements.md, "Filters").
+//! Filter semantics.
 //!
 //! A record matches a filter when its path matches **any** of the path prefixes (or the
 //! list is empty) **and** its language equals **any** of the languages (or that list is

@@ -1,4 +1,4 @@
-//! Small shared tools (unit U02): a stable hash, a seeded PRNG and a bitset.
+//! Small shared tools: a stable hash, a seeded PRNG and a bitset.
 //!
 //! Everything here is persisted or determines persisted bytes, so the algorithms are fixed
 //! by this documentation and must never change within a format version (std's

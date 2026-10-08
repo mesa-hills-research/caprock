@@ -1,4 +1,4 @@
-//! Beam search over a Vamana graph (unit U15).
+//! Beam search over a Vamana graph.
 //!
 //! Greedy best-first search from the graph's entry with a candidate list of `beam` nodes,
 //! scoring nodes with the codec's estimates. Nodes that `admit` rejects (deleted, or

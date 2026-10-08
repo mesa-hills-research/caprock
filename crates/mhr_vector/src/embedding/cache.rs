@@ -1,4 +1,4 @@
-//! The embedding cache (unit U19).
+//! The embedding cache.
 //!
 //! One directory per model under a root: `<root>/<document fingerprint>/`, holding a
 //! `model.json` (the [`EmbeddingModel`]) and an append-only log of records:

@@ -1,4 +1,4 @@
-//! Deleted ordinals of one sealed segment (unit U10).
+//! Deleted ordinals of one sealed segment.
 //!
 //! Tombstones are immutable values shared by snapshots: deleting creates a new value
 //! (copy-on-write), so a snapshot never sees a later delete. On disk a tombstone file is

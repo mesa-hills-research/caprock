@@ -1,4 +1,4 @@
-//! Canonical score arithmetic (unit U01; docs/requirements.md, "Scores").
+//! Canonical score arithmetic.
 //!
 //! The **canonical dot product** keeps 16 `f32` lane accumulators. Element `i` is added
 //! to lane `i % 16`, in increasing `i`, as `acc = acc + (a[i] * b[i])`, the product and
@@ -8,8 +8,8 @@
 //! and `d * d`. **Normalization** computes `norm = sqrt(dot(v, v))` in `f32` and divides
 //! each component by it.
 //!
-//! Final scores must be computed with these functions: they equal the oracle's bit for
-//! bit, which is what makes exact search checkable with `==`. A SIMD implementation that
+//! Final scores must be computed with these functions, so every search returns the same
+//! bits for a record whichever path found it, and exact search is checkable with `==`. A SIMD implementation that
 //! keeps this lane order produces the same bits. Candidate generation may use any faster
 //! approximation (see [`dot_fast`]).
 

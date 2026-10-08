@@ -1,4 +1,4 @@
-//! The writer (unit U17).
+//! The writer.
 
 use std::collections::BTreeSet;
 use std::fs;

@@ -1,34 +1,34 @@
-//! `mhr_vector`: a pure-Rust vector store for code search.
+//! A vector store in pure, safe Rust.
 //!
 //! - **Exact and approximate search.** Every index can answer exactly
-//!   ([`SearchParams::exact`], or an index made with [`IndexConfig::exact`]); large
-//!   segments also carry a Vamana graph (the DiskANN family) for approximate search.
-//! - **Quantization with rescoring.** Each segment keeps compact codes in memory
+//!   ([`SearchParams::exact`], or an index made with [`IndexConfig::exact`]). Large
+//!   segments can also carry a Vamana graph (the DiskANN family) for approximate search.
+//! - **Compact codes with rescoring.** Each segment keeps compact codes in memory
 //!   ([`CodeKind::Int8`] or [`CodeKind::Binary`]) to find candidates and rescores them with
 //!   the full-precision vectors kept on disk, so returned scores are exact.
+//! - **Filters.** Each record has a path and a language, and a [`Filter`] selects records
+//!   by path prefix and by language.
 //! - **Deterministic.** Scores follow a canonical arithmetic ([`distance`]), ties break by
 //!   key, and builds give the same bytes whatever the thread count.
 //! - **Incremental and crash-safe.** One [`Writer`] applies upserts and deletes, visible
-//!   to new [`Snapshot`]s at once; [`Writer::commit`] makes them durable by switching to a
+//!   to new [`Snapshot`]s at once. [`Writer::commit`] makes them durable by switching to a
 //!   new generation atomically. Many readers search snapshots concurrently.
 //! - **Bounded memory.** Builds stay within [`StoreOptions::build_memory_budget`].
-//! - **Embedding-aware.** An index records its [`EmbeddingModel`]; opening it for another
-//!   model fails with [`Error::ModelMismatch`]. [`EmbeddingCache`] keeps vectors by
-//!   (model, content hash) so unchanged chunks are never embedded twice.
+//! - **Embedding-aware.** An index can record its [`EmbeddingModel`], and opening it for
+//!   another model fails with [`Error::ModelMismatch`]. [`EmbeddingCache`] keeps vectors by
+//!   (model, content hash), so unchanged texts are embedded once.
 //!
-//! The contract is docs/requirements.md in the repository. The oracle crate
-//! (`mhr_vector_oracle`) defines ground truth.
+//! docs/reference.md in the repository describes the behaviour in full.
 //!
 //! ```no_run
-//! use mhr_vector::{EmbeddingModel, Filter, IndexConfig, Op, Record, SearchParams, StoreOptions, Writer};
+//! use mhr_vector::{Filter, IndexConfig, Metric, Op, Record, SearchParams, StoreOptions, Writer};
 //!
 //! # fn main() -> mhr_vector::Result<()> {
-//! let model = EmbeddingModel::voyage_code_4(1024);
-//! let config = IndexConfig::for_model(model);
+//! let config = IndexConfig::new(1024, Metric::Cosine);
 //! let mut writer = Writer::create("/tmp/index".as_ref(), config, StoreOptions::default())?;
 //! let vector = vec![0.1f32; 1024];
 //! writer.apply(&[Op::Upsert(Record {
-//!     key: "3f2a...-0",
+//!     key: "doc-1",
 //!     vector: &vector,
 //!     path: "src/lib.rs",
 //!     language: "rust",

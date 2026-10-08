@@ -1,16 +1,12 @@
 //! Configuration. [`IndexConfig`] is persisted with the index and fixed at creation;
 //! [`StoreOptions`] apply to one open handle; [`SearchParams`] to one search.
-//!
-//! The defaults are the ones docs/requirements.md's targets are measured with. Validation is
-//! implemented here (not a unit): it is part of the contract.
 
 use serde::{Deserialize, Serialize};
 
 use crate::embedding::EmbeddingModel;
 use crate::error::{Error, Result};
 
-/// The similarity results are ranked by. Scores are "higher is better" for every metric
-/// (docs/requirements.md, "Scores").
+/// The similarity results are ranked by. Scores are "higher is better" for every metric.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Metric {
@@ -46,8 +42,7 @@ impl CodeKind {
     }
 }
 
-/// Parameters of a Vamana graph (DiskANN's in-memory index; docs/requirements.md,
-/// "Approximate search").
+/// Parameters of a Vamana graph (DiskANN's in-memory index).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct VamanaParams {
     /// Out-degree bound `R`.
@@ -110,8 +105,8 @@ impl Default for AnnConfig {
 pub struct IndexConfig {
     pub dim: u32,
     pub metric: Metric,
-    /// The model the vectors come from; `None` for vectors of unknown origin (benchmark
-    /// datasets). When set, `dim` equals its `dimensions`.
+    /// The model the vectors come from, if recorded. When set, `dim` equals its
+    /// `dimensions`.
     #[serde(default)]
     pub embedding: Option<EmbeddingModel>,
     /// Codes kept in memory for candidate search. Full-precision vectors are always kept
@@ -151,7 +146,8 @@ impl IndexConfig {
         config
     }
 
-    /// An exact index: f32 codes, no graphs. Its results equal the oracle's bit for bit.
+    /// An exact index: f32 codes, no graphs. Its results are exact: the keys, scores and
+    /// order of a brute-force scan.
     pub fn exact(dim: u32, metric: Metric) -> IndexConfig {
         let mut config = IndexConfig::new(dim, metric).with_codes(CodeKind::F32);
         config.ann.kind = AnnKind::Flat;
@@ -174,7 +170,7 @@ impl IndexConfig {
         self
     }
 
-    /// Checks every field's range (docs/requirements.md, "Configuration").
+    /// Checks every field's range.
     pub fn validate(&self) -> Result<()> {
         let bad = |msg: String| Err(Error::InvalidConfig(msg));
         if self.dim == 0 || self.dim > crate::MAX_DIM {
@@ -254,7 +250,7 @@ pub enum VerifyMode {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoreOptions {
     /// Peak extra memory a seal, merge or graph build may use. Also bounds the size of a
-    /// segment (docs/requirements.md, "Memory").
+    /// segment.
     pub build_memory_budget: u64,
     /// Threads for builds. Results never depend on it.
     pub threads: usize,
@@ -307,7 +303,8 @@ pub struct SearchParams {
     pub beam: Option<u32>,
     /// Number of candidates rescored at full precision (raised to at least `k`).
     pub rescore: Option<u32>,
-    /// Exact search over the full-precision vectors: equal to the oracle bit for bit.
+    /// Exact search over the full-precision vectors: the keys, scores and order of a
+    /// brute-force scan.
     pub exact: bool,
 }
 

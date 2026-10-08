@@ -1,4 +1,4 @@
-//! Deterministic Vamana construction (unit U14).
+//! Deterministic Vamana construction.
 //!
 //! Searches and robust pruning within a batch read the pre-batch graph. Out-edges
 //! are then installed, and every reverse edge's target is re-pruned from its row

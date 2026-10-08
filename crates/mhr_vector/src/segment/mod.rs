@@ -1,4 +1,4 @@
-//! Sealed segments (unit U11; docs/requirements.md, "Segments" and "On-disk format").
+//! Sealed segments.
 //!
 //! A segment is one immutable section file (`seg-<id>.mhrv`) holding records sorted by
 //! (path, key): full-precision vectors (read on demand with positional reads; for f32
@@ -6,7 +6,7 @@
 //! path and language tables, and optionally a Vamana graph over its ordinals.
 //!
 //! Resident memory of an open segment: codes, graph, keys, key index, path table and
-//! language ids (docs/requirements.md, "Memory"); full-precision vectors stay on disk.
+//! language ids. Full-precision vectors stay on disk.
 
 use std::path::Path;
 

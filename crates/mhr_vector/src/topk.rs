@@ -1,4 +1,4 @@
-//! Top-k selection with deterministic ties (unit U03).
+//! Top-k selection with deterministic ties.
 //!
 //! The order of results everywhere: score descending, then key ascending (bytes). Scores
 //! are never NaN; `-0.0` and `0.0` are equal.

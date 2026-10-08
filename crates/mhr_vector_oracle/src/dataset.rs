@@ -1,4 +1,4 @@
-//! The raw dataset format shared by the benchmark harness and the conversion scripts.
+//! The raw dataset format of the benchmark harness.
 //!
 //! A dataset is a directory:
 //!

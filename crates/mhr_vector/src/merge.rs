@@ -1,5 +1,4 @@
-//! Merge planning and the memory math (unit U16; docs/requirements.md, "Maintenance" and
-//! "Memory").
+//! Merge planning and the memory math.
 //!
 //! Planning is a pure function of segment summaries, so the same segments always give
 //! the same plans (determinism of layouts). Plans never share inputs.
@@ -179,7 +178,7 @@ pub fn plan_compaction(
 }
 
 /// The most records one segment build may hold within `budget` bytes for this
-/// configuration (docs/requirements.md, "Memory"). `Budget` when fewer than 1,024 fit.
+/// configuration. `Budget` when fewer than 1,024 fit.
 pub fn max_segment_vectors(config: &IndexConfig, budget: u64) -> Result<u64> {
     config.validate()?;
     let minimum = build_allowance(config, 1024);
@@ -235,7 +234,7 @@ fn finish_plans(
 }
 
 fn build_allowance(config: &IndexConfig, vectors: u64) -> u64 {
-    // Use U11's actual workspace estimate rather than maintaining another graph
+    // Use the segment writer's workspace estimate rather than maintaining another graph
     // scratch formula here. Reserve graph workspace whenever ANN is enabled, even
     // below its threshold: the size cap is safe for either a seal or a graph build.
     let graph = matches!(config.ann.kind, AnnKind::Vamana(_));

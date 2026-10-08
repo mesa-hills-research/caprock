@@ -1,4 +1,4 @@
-//! Filters (unit U04; docs/requirements.md, "Filters").
+//! Filters.
 //!
 //! A record matches a [`Filter`] when its path matches **any** of the path prefixes (or
 //! the list is empty) **and** its language equals **any** of the languages (or that list

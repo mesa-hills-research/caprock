@@ -1,6 +1,6 @@
 [package]
 name = "mhr_vector"
-description = "A pure-Rust, safe-Rust vector store for code search: exact and Vamana-graph search, int8 and binary codes with full-precision rescoring, crash-safe segments"
+description = "A pure, safe Rust vector store: exact and Vamana graph search, int8 and binary codes with full-precision rescoring, path and language filters, crash-safe incremental updates"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

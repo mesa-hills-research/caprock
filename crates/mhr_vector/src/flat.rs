@@ -1,4 +1,4 @@
-//! Flat search and rescoring within one segment (unit U13; docs/requirements.md, "Search").
+//! Flat search and rescoring within one segment.
 
 use crate::config::CodeKind;
 use crate::distance;

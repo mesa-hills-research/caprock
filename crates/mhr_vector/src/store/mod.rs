@@ -1,6 +1,4 @@
-//! The store: one [`Writer`], many [`Reader`]s and [`Snapshot`]s (units U17 writer and
-//! snapshot, U18 search and reader; docs/requirements.md, "Concurrency", "Updates and
-//! visibility", "Persistence").
+//! The store: one [`Writer`], many [`Reader`]s and [`Snapshot`]s.
 //!
 //! - [`Writer`] owns an index directory (exclusive lock). [`Writer::apply`] changes the
 //!   in-memory state and publishes a new [`Snapshot`] before returning (read-your-writes

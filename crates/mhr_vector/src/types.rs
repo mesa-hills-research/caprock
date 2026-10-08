@@ -2,17 +2,18 @@
 
 use crate::config::CodeKind;
 
-/// A record to store: a stable key (arko_index's chunk ID), its vector, and the metadata
-/// filters use.
+/// A record to store: a stable key, its vector, and the metadata filters use.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Record<'a> {
     /// 1..=255 bytes; unique in the index. Results break score ties by key (bytes).
     pub key: &'a str,
     /// `dim` finite components, each at most 1e15 in magnitude (non-zero for cosine).
     pub vector: &'a [f32],
-    /// The chunk's file path, relative, `/`-separated (at most 4096 bytes).
+    /// A `/`-separated path, such as a file path (at most 4096 bytes). Filters select
+    /// records by path prefix.
     pub path: &'a str,
-    /// The chunk's language name (at most 64 bytes).
+    /// A short label, such as a programming or natural language (at most 64 bytes).
+    /// Filters select records by language.
     pub language: &'a str,
 }
 
@@ -29,8 +30,8 @@ pub enum Op<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Hit {
     pub key: String,
-    /// Higher is better. Canonical (equal to the oracle's bit for bit): every search
-    /// rescores its candidates at full precision.
+    /// Higher is better. Exact: every search rescores its candidates at full precision
+    /// with the canonical arithmetic ([`crate::distance`]).
     pub score: f32,
     pub path: String,
     pub language: String,
