@@ -1,6 +1,6 @@
 //! Sealed segments.
 //!
-//! A segment is one immutable section file (`seg-<id>.mhrv`) holding records sorted by
+//! A segment is one immutable section file (`seg-<id>.caprock`) holding records sorted by
 //! (path, key): full-precision vectors (read on demand with positional reads; for f32
 //! codes the codes section is the full-precision copy and is resident), resident codes, the codec's parameters, keys and a key index, the
 //! path and language tables, and optionally a Vamana graph over its ordinals.
@@ -109,7 +109,7 @@ pub struct SegmentBuild<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SegmentInfo {
     pub id: u64,
-    /// File name within the index directory (`seg-<id>.mhrv`).
+    /// File name within the index directory (`seg-<id>.caprock`).
     pub file: String,
     pub vectors: u64,
     pub has_graph: bool,

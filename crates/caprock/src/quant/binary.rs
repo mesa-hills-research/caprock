@@ -11,7 +11,7 @@ use crate::error::{Error, Result, VectorError};
 use crate::format::{f32s_from_le, f32s_to_le};
 use crate::quant::Codec;
 
-const MAGIC: &[u8; 8] = b"MHRVBIN1";
+const MAGIC: &[u8; 8] = b"CAPRBIN1";
 const HEADER_LEN: usize = 16;
 
 /// Binary codec parameters.

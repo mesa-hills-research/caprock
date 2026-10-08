@@ -70,7 +70,7 @@ fn segments_hold_their_records_sorted_by_path_and_key() {
         let dir = TempDir::new("segment-basic");
         let info = write_segment(dir.path(), &source, &build(&config, 7, 2)).unwrap();
         assert_eq!(info.id, 7);
-        assert_eq!(info.file, "seg-00000000000000000007.mhrv");
+        assert_eq!(info.file, "seg-00000000000000000007.caprock");
         assert_eq!(info.vectors, 1500);
         assert!(!info.has_graph);
         assert_eq!(

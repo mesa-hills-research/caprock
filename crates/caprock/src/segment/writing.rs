@@ -108,7 +108,7 @@ pub(super) fn write(
         }
         AnyCodec::train(config.codes, config.metric, dim, &sample, seed)?
     };
-    let file_name = format!("seg-{:020}.mhrv", build.id);
+    let file_name = format!("seg-{:020}.caprock", build.id);
     let mut writer = SectionWriter::create(&dir.join(&file_name), SEGMENT_MAGIC)?;
     let info = Info {
         id: build.id,

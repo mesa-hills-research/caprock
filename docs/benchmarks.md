@@ -108,7 +108,7 @@ $B run --suite workloads/smoke.json --out results/smoke
 
 ### Your own data
 
-A dataset is a folder under `datasets/` (or `$MHRV_DATASETS`, or `--datasets DIR`):
+A dataset is a folder under `datasets/` (or `$CAPROCK_DATASETS`, or `--datasets DIR`):
 
 ```text
 dataset.json   the description below
@@ -119,7 +119,7 @@ meta.jsonl     optional: one {"key", "path", "language"} object per vector
 
 ```json
 {
-  "format": "mhr-vector-dataset/1",
+  "format": "caprock-dataset/1",
   "name": "my-set",
   "metric": "cosine",
   "dim": 768,

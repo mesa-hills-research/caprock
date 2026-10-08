@@ -7,7 +7,7 @@ impl TestDir {
     fn new() -> Self {
         static NEXT: AtomicU64 = AtomicU64::new(0);
         let path = std::env::temp_dir().join(format!(
-            "mhrv-embedding-{}-{}",
+            "caprock-embedding-{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
@@ -218,7 +218,7 @@ fn invalid_headers_and_model_identity_refuse_without_rewriting_and_release_lock(
     drop(cache);
     for bytes in [
         vec![],
-        b"MHRVEMB1".to_vec(),
+        b"CAPREMB1".to_vec(),
         header(2).to_vec(),
         vec![0; 12],
     ] {

@@ -4,7 +4,7 @@
 //! `model.json` (the [`EmbeddingModel`]) and an append-only log of records:
 //!
 //! ```text
-//! log file "cache-<20 digits>.log": magic b"MHRVEMB1", dimension u32, then records:
+//! log file "cache-<20 digits>.log": magic b"CAPREMB1", dimension u32, then records:
 //!   content hash [u8; 32], dimension x f32 (little-endian), CRC-32 of the hash and
 //!   vector bytes (u32)
 //! ```
@@ -24,7 +24,7 @@ use crate::embedding::{ContentHash, EmbeddingModel};
 use crate::error::{Error, Result, VectorError};
 use crate::format::{atomic_write, f32s_from_le, read_exact_at, sync_dir};
 
-const MAGIC: &[u8; 8] = b"MHRVEMB1";
+const MAGIC: &[u8; 8] = b"CAPREMB1";
 const HEADER_LEN: u64 = 12;
 
 /// Cache counters.

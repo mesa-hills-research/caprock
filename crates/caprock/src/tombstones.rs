@@ -2,7 +2,7 @@
 //!
 //! Tombstones are immutable values shared by snapshots: deleting creates a new value
 //! (copy-on-write), so a snapshot never sees a later delete. On disk a tombstone file is
-//! `b"MHRVDEL1"`, the segment's ordinal count (u64), the deleted count (u64), the bitset
+//! `b"CAPRDEL1"`, the segment's ordinal count (u64), the deleted count (u64), the bitset
 //! ([`crate::util::Bitset::to_bytes`]) and a CRC-32 of everything before it (u32), all
 //! little-endian; it is written atomically ([`crate::format::atomic_write`]).
 
@@ -16,7 +16,7 @@ use crate::format::{atomic_write, read_exact_at};
 use crate::util::Bitset;
 
 /// The magic of tombstone files.
-pub const TOMBSTONE_MAGIC: [u8; 8] = *b"MHRVDEL1";
+pub const TOMBSTONE_MAGIC: [u8; 8] = *b"CAPRDEL1";
 
 /// A segment's deleted ordinals. Cloning is cheap.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -152,7 +152,7 @@ mod tests {
         fn new() -> Self {
             static NEXT: AtomicU64 = AtomicU64::new(0);
             let path = std::env::temp_dir().join(format!(
-                "mhrv-tombstone-unit-{}-{}",
+                "caprock-tombstone-test-{}-{}",
                 std::process::id(),
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));

@@ -197,7 +197,7 @@ mod tests {
         fn new(metric: Metric, codes: CodeKind) -> Self {
             static NEXT: AtomicU64 = AtomicU64::new(0);
             let dir = std::env::temp_dir().join(format!(
-                "mhrv-flat-unit-{}-{}",
+                "caprock-flat-test-{}-{}",
                 std::process::id(),
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));

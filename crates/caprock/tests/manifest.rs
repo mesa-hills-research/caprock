@@ -37,7 +37,7 @@ fn manifest(generation: u64, segments: &[u64]) -> Manifest {
 #[test]
 fn names() {
     assert_eq!(manifest_file_name(1), "gen-00000000000000000001.json");
-    assert_eq!(segment_file_name(42), "seg-00000000000000000042.mhrv");
+    assert_eq!(segment_file_name(42), "seg-00000000000000000042.caprock");
     assert_eq!(
         tombstone_file_name(3, 7),
         "del-00000000000000000003-00000000000000000007.bits"
@@ -110,6 +110,18 @@ fn bad_current_is_reported() {
     assert!(matches!(
         read_current(dir.path()),
         Err(Error::UnsupportedFormat { .. })
+    ));
+    let mut older = manifest(9, &[]);
+    older.format_version = FORMAT_VERSION - 1;
+    std::fs::write(
+        dir.path().join(manifest_file_name(9)),
+        serde_json::to_string(&older).unwrap(),
+    )
+    .unwrap();
+    assert!(matches!(
+        read_current(dir.path()),
+        Err(Error::UnsupportedFormat { found, supported })
+            if found == FORMAT_VERSION - 1 && supported == FORMAT_VERSION
     ));
     std::fs::write(dir.path().join(manifest_file_name(9)), "{ not json").unwrap();
     assert!(matches!(

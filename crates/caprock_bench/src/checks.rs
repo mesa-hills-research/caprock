@@ -55,9 +55,9 @@ fn check(id: impl Into<String>, f: impl Fn() -> Outcome + Send + Sync + 'static)
     }
 }
 
-/// Seeds per scenario check (`MHRV_CONFORM_SEEDS`, default 2).
+/// Seeds per scenario check (`CAPROCK_CONFORM_SEEDS`, default 2).
 fn seeds() -> u64 {
-    std::env::var("MHRV_CONFORM_SEEDS")
+    std::env::var("CAPROCK_CONFORM_SEEDS")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(2)
@@ -566,8 +566,8 @@ fn persistence_garbage() -> Outcome {
     let (w, oracle, queries) = small_store(dir.path())?;
     drop(w);
     let stray = [
-        "seg-00000000000000000999.mhrv",
-        "seg-00000000000000000998.mhrv.tmp",
+        "seg-00000000000000000999.caprock",
+        "seg-00000000000000000998.caprock.tmp",
         "gen-00000000000000000000.json",
     ];
     for f in stray {
@@ -624,7 +624,7 @@ fn persistence_corrupt_segment() -> Outcome {
         .map_err(|e| fail("io", e.to_string()))?
         .flatten()
         .map(|e| e.path())
-        .find(|p| p.extension().is_some_and(|x| x == "mhrv"))
+        .find(|p| p.extension().is_some_and(|x| x == "caprock"))
         .ok_or_else(|| {
             fail(
                 "no-segment",

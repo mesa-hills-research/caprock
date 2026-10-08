@@ -10,7 +10,7 @@ impl Dir {
         static NEXT: AtomicU64 = AtomicU64::new(0);
         loop {
             let path = std::env::temp_dir().join(format!(
-                "mhrv-segment-{}-{}",
+                "caprock-segment-{}-{}",
                 std::process::id(),
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));
@@ -216,7 +216,7 @@ fn checksummed_invalid_tables_are_corrupt_not_panics() {
         }
     };
     for (i, (kind, at, patch)) in mutations.iter().enumerate() {
-        let name = format!("mutation-{i}.mhrv");
+        let name = format!("mutation-{i}.caprock");
         rewrite(&file, &dir.0.join(&name), |k, bytes| {
             if k == *kind {
                 bytes[*at..*at + patch.len()].copy_from_slice(patch);
@@ -226,10 +226,10 @@ fn checksummed_invalid_tables_are_corrupt_not_panics() {
         assert_bad(&name);
     }
     for entry in file.entries() {
-        let name = format!("missing-{}.mhrv", entry.kind.id());
+        let name = format!("missing-{}.caprock", entry.kind.id());
         rewrite(&file, &dir.0.join(&name), |k, _| k != entry.kind);
         assert_bad(&name);
-        let name = format!("short-{}.mhrv", entry.kind.id());
+        let name = format!("short-{}.caprock", entry.kind.id());
         rewrite(&file, &dir.0.join(&name), |k, bytes| {
             if k == entry.kind {
                 bytes.pop();
@@ -380,7 +380,7 @@ fn invalid_inputs_fail_without_publishing_a_segment() {
         write_segment(&dir.0, &source, &build(&config)),
         Err(Error::InvalidVector(_))
     ));
-    assert!(!dir.0.join("seg-00000000000000000009.mhrv").exists());
+    assert!(!dir.0.join("seg-00000000000000000009.caprock").exists());
     assert!(source.read_vector(usize::MAX, &mut [0.0; 17]).is_err());
     assert!(source.read_vector(0, &mut []).is_err());
     source.vectors.clear();

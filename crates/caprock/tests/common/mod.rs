@@ -21,7 +21,7 @@ impl TempDir {
                 .as_nanos() as u64,
         );
         let dir = std::env::temp_dir().join(format!(
-            "mhrv-{name}-{}-{:x}",
+            "caprock-{name}-{}-{:x}",
             std::process::id(),
             rng.next_u64()
         ));

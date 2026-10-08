@@ -4,7 +4,7 @@
 //!
 //! ```text
 //! offset 0, 64 bytes, the header:
-//!   0..8    magic (b"MHRVSEG1" for segments)
+//!   0..8    magic (b"CAPRSEG1" for segments)
 //!   8..12   format version, u32 = FORMAT_VERSION
 //!   12..16  section count, u32
 //!   16..24  table offset, u64
@@ -32,9 +32,9 @@ use crate::config::VerifyMode;
 use crate::error::{Error, Result};
 
 /// The on-disk format version this build writes and reads.
-pub const FORMAT_VERSION: u32 = 1;
+pub const FORMAT_VERSION: u32 = 2;
 /// The magic of segment files.
-pub const SEGMENT_MAGIC: [u8; 8] = *b"MHRVSEG1";
+pub const SEGMENT_MAGIC: [u8; 8] = *b"CAPRSEG1";
 /// Size of the header.
 pub const HEADER_LEN: u64 = 64;
 /// Size of one section-table entry.
@@ -621,7 +621,7 @@ mod tests {
             static NEXT: AtomicU64 = AtomicU64::new(0);
             loop {
                 let path = std::env::temp_dir().join(format!(
-                    "mhrv-format-{}-{}",
+                    "caprock-format-{}-{}",
                     std::process::id(),
                     NEXT.fetch_add(1, Ordering::Relaxed)
                 ));
@@ -658,7 +658,7 @@ mod tests {
     #[test]
     fn checksummed_malformed_metadata_is_rejected() {
         let dir = TestDir::new();
-        let path = dir.0.join("metadata.mhrv");
+        let path = dir.0.join("metadata.caprock");
         let mut writer = SectionWriter::create(&path, SEGMENT_MAGIC).unwrap();
         writer.write_section(SectionKind::Info, &[1; 129]).unwrap();
         writer.write_section(SectionKind::KeyBytes, b"keys").unwrap();
@@ -716,13 +716,13 @@ mod tests {
     #[test]
     fn empty_sections_and_streaming_state() {
         let dir = TestDir::new();
-        let empty_path = dir.0.join("empty.mhrv");
+        let empty_path = dir.0.join("empty.caprock");
         let writer = SectionWriter::create(&empty_path, SEGMENT_MAGIC).unwrap();
         assert_eq!(writer.finish().unwrap(), HEADER_LEN);
         let empty = SectionFile::open(&empty_path, SEGMENT_MAGIC, VerifyMode::Full).unwrap();
         assert!(empty.entries().is_empty());
 
-        let path = dir.0.join("sections.mhrv");
+        let path = dir.0.join("sections.caprock");
         let mut writer = SectionWriter::create(&path, SEGMENT_MAGIC).unwrap();
         assert!(writer.write_chunk(&[]).is_err());
         assert!(writer.end_section().is_err());
@@ -744,7 +744,7 @@ mod tests {
         assert!(file.read_at(SectionKind::Codes, 6, &mut []).is_err());
         assert_eq!(file.read_section(SectionKind::Codes).unwrap(), b"codes");
 
-        let unfinished = dir.0.join("unfinished.mhrv");
+        let unfinished = dir.0.join("unfinished.caprock");
         let mut writer = SectionWriter::create(&unfinished, SEGMENT_MAGIC).unwrap();
         writer.begin_section(SectionKind::Info).unwrap();
         assert!(writer.finish().is_err());
@@ -754,7 +754,7 @@ mod tests {
     #[test]
     fn positional_reads_leave_cursor_unchanged_and_detect_truncation() {
         let dir = TestDir::new();
-        let path = dir.0.join("positional.mhrv");
+        let path = dir.0.join("positional.caprock");
         let mut writer = SectionWriter::create(&path, SEGMENT_MAGIC).unwrap();
         writer.write_section(SectionKind::Info, b"abcdef").unwrap();
         writer.finish().unwrap();
@@ -799,7 +799,7 @@ mod tests {
         let dir = TestDir::new();
         let published = dir.0.join("published");
         fs::write(&published, b"untouched").unwrap();
-        let new_path = dir.0.join("new.mhrv");
+        let new_path = dir.0.join("new.caprock");
         fs::hard_link(&published, temporary_path(&new_path)).unwrap();
         SectionWriter::create(&new_path, SEGMENT_MAGIC).unwrap().finish().unwrap();
         assert_eq!(fs::read(&published).unwrap(), b"untouched");

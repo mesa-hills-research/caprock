@@ -4,7 +4,9 @@ mod common;
 
 use std::collections::BTreeMap;
 
-use caprock::{EmbeddingModel, Error, IndexConfig, Metric, Op, Record, StoreOptions, Writer};
+use caprock::{
+    EmbeddingModel, Error, IndexConfig, Metric, Op, Reader, Record, StoreOptions, Writer,
+};
 use caprock_oracle::canonical;
 use caprock_oracle::generate::{Shape, VectorSpec, key, path_for};
 use caprock_oracle::rng::Rng;
@@ -115,6 +117,35 @@ fn create_commit_reopen() {
     assert_eq!(w.checkpoint().as_deref(), Some(&b"seq-42"[..]));
     assert_eq!(w.snapshot().generation(), 2);
     assert_eq!(w.snapshot().version(), 1205);
+}
+
+/// An index written in format version 1, before the store's on-disk names changed, is
+/// refused by writers and readers alike.
+#[test]
+fn indexes_of_another_format_are_refused() {
+    let dir = TempDir::new("w-format");
+    let mut w = Writer::create(dir.path(), config(16), options(300, 1)).unwrap();
+    Model::new(16, 2).apply(&mut w, 0..10, &[]);
+    w.commit(None).unwrap();
+    drop(w);
+    let current = std::fs::read_to_string(dir.path().join("CURRENT")).unwrap();
+    let manifest = dir.path().join(current.trim_end());
+    let mut text: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&manifest).unwrap()).unwrap();
+    text["format_version"] = 1.into();
+    std::fs::write(&manifest, serde_json::to_vec(&text).unwrap()).unwrap();
+    for result in [
+        Writer::open(dir.path(), options(300, 1)).map(drop),
+        Reader::open(dir.path(), options(300, 1)).map(drop),
+    ] {
+        match result {
+            Err(Error::UnsupportedFormat {
+                found: 1,
+                supported,
+            }) => assert!(supported > 1),
+            other => panic!("expected UnsupportedFormat, got {other:?}"),
+        }
+    }
 }
 
 #[test]
@@ -336,8 +367,8 @@ fn garbage_is_removed_on_open() {
     w.commit(None).unwrap();
     drop(w);
     let stray = [
-        "seg-00000000000000000999.mhrv",
-        "seg-00000000000000000998.mhrv.tmp",
+        "seg-00000000000000000999.caprock",
+        "seg-00000000000000000998.caprock.tmp",
     ];
     for f in stray {
         std::fs::write(dir.path().join(f), b"junk").unwrap();

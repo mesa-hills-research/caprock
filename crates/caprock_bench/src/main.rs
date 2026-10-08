@@ -22,7 +22,7 @@ usage: caprock_bench <command> [options]   (JSON on stdout)
 Filters (--filters, workload \"filters\"): the standard set (none, p50, p10, p01, p001, go,
 p10-python, p01-or-p001, p50-d7, nothing), or path:<prefix>, or lang:<language>.
 
-Common: --datasets ROOT (default $MHRV_DATASETS or ./datasets), --engine caprock|oracle.";
+Common: --datasets ROOT (default $CAPROCK_DATASETS or ./datasets), --engine caprock|oracle.";
 
 fn main() {
     let raw: Vec<String> = std::env::args().skip(1).collect();

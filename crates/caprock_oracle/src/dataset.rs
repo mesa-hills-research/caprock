@@ -3,7 +3,7 @@
 //! A dataset is a directory:
 //!
 //! ```text
-//! dataset.json   the description below (format "mhr-vector-dataset/1")
+//! dataset.json   the description below (format "caprock-dataset/1")
 //! base.f32       base vectors, row-major little-endian f32, base_count x dim
 //! queries.f32    query vectors, query_count x dim
 //! meta.jsonl     optional: one {"key", "path", "language"} object per base vector
@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 use crate::canonical::Metric;
 
 /// The `format` value this version reads and writes.
-pub const FORMAT: &str = "mhr-vector-dataset/1";
+pub const FORMAT: &str = "caprock-dataset/1";
 
 /// The seed of synthetic paths for datasets without `meta.jsonl`.
 pub const PATH_SEED: u64 = 0x5EED;

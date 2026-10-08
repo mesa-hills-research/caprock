@@ -41,7 +41,7 @@ fn u64_at(b: &[u8], at: usize) -> u64 {
 
 /// Writes a file with three sections; returns (path, info, vectors bytes, codes).
 fn sample(dir: &std::path::Path) -> (std::path::PathBuf, Vec<u8>, Vec<u8>, Vec<u8>) {
-    let path = dir.join("seg-1.mhrv");
+    let path = dir.join("seg-1.caprock");
     let info = br#"{"hello":"world"}"#.to_vec();
     let vectors: Vec<u8> = (0..100_003u32)
         .flat_map(|i| (i as f32).to_le_bytes())
@@ -78,7 +78,7 @@ fn kinds_and_alignment() {
 fn written_files_follow_the_layout() {
     let dir = TempDir::new("format-layout");
     let (path, info, vectors, codes) = sample(dir.path());
-    assert!(!dir.path().join("seg-1.mhrv.tmp").exists());
+    assert!(!dir.path().join("seg-1.caprock.tmp").exists());
     let bytes = std::fs::read(&path).unwrap();
     assert_eq!(&bytes[0..8], &SEGMENT_MAGIC);
     assert_eq!(u32_at(&bytes, 8), FORMAT_VERSION);
@@ -185,7 +185,7 @@ fn damage_is_detected() {
     ));
     std::fs::write(&path, &good).unwrap();
     assert!(matches!(
-        SectionFile::open(&path, *b"MHRVXXXX", VerifyMode::Headers),
+        SectionFile::open(&path, *b"CAPRXXXX", VerifyMode::Headers),
         Err(Error::Corrupt { .. })
     ));
     std::fs::write(&path, &good[..good.len() - 7]).unwrap();
@@ -219,8 +219,8 @@ fn writers_refuse_misuse() {
         SectionWriter::create(&path, SEGMENT_MAGIC).is_err(),
         "final file exists"
     );
-    let other = dir.path().join("seg-2.mhrv");
-    std::fs::write(dir.path().join("seg-2.mhrv.tmp"), b"stale").unwrap();
+    let other = dir.path().join("seg-2.caprock");
+    std::fs::write(dir.path().join("seg-2.caprock.tmp"), b"stale").unwrap();
     let mut w = SectionWriter::create(&other, SEGMENT_MAGIC).unwrap();
     w.write_section(SectionKind::Info, b"{}").unwrap();
     assert!(

@@ -274,12 +274,12 @@ impl Workload {
     }
 }
 
-/// Where datasets live: `--datasets DIR`, else `$MHRV_DATASETS`, else `./datasets`.
+/// Where datasets live: `--datasets DIR`, else `$CAPROCK_DATASETS`, else `./datasets`.
 pub fn datasets_root(arg: Option<&str>) -> PathBuf {
     if let Some(a) = arg {
         return PathBuf::from(a);
     }
-    if let Ok(e) = std::env::var("MHRV_DATASETS") {
+    if let Ok(e) = std::env::var("CAPROCK_DATASETS") {
         return PathBuf::from(e);
     }
     PathBuf::from("datasets")

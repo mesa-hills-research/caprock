@@ -98,7 +98,7 @@ fn top_k(
     best
 }
 
-const MAGIC: &[u8; 8] = b"MHRVGT01";
+const MAGIC: &[u8; 8] = b"CAPRGT01";
 
 /// Writes ground truth: magic, `k` (u32), query count (u32), base rows (u64), then
 /// per query `k` pairs of (row u32, score f32), padded with `(u32::MAX, 0.0)`.
@@ -215,7 +215,7 @@ mod tests {
 
     #[test]
     fn truth_files_round_trip() {
-        let dir = std::env::temp_dir().join(format!("mhrv-gt-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("caprock-gt-{}", std::process::id()));
         let path = dir.join("t.bin");
         let lists = vec![vec![(3u32, 0.5f32), (1, 0.25)], vec![(7, -1.0)]];
         write_truth(&path, 2, 10, &lists).unwrap();

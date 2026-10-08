@@ -160,7 +160,7 @@ An index directory holds:
 LOCK                          the writer lock
 CURRENT                       the name of the current manifest
 gen-<20 digits>.json          one manifest per committed generation
-seg-<20 digits>.mhrv          sealed segments, immutable
+seg-<20 digits>.caprock       sealed segments, immutable
 del-<seg 20>-<gen 20>.bits    a segment's tombstones as of a generation, immutable
 *.tmp                         unfinished writes
 ```

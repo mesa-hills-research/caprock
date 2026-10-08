@@ -18,11 +18,11 @@ impl Scratch {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos() as u64)
             .unwrap_or(0);
-        let base = std::env::var("MHRV_SCRATCH")
+        let base = std::env::var("CAPROCK_SCRATCH")
             .map(PathBuf::from)
             .unwrap_or_else(|_| std::env::temp_dir());
         let dir = base.join(format!(
-            "mhrv-{name}-{}-{:x}",
+            "caprock-{name}-{}-{:x}",
             std::process::id(),
             Rng::new(nanos).next_u64()
         ));

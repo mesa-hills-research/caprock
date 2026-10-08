@@ -12,7 +12,7 @@ use crate::error::{Error, Result, VectorError};
 use crate::format::{f32s_from_le, f32s_to_le};
 use crate::quant::Codec;
 
-const MAGIC: [u8; 8] = *b"MHRVI8\0\x01";
+const MAGIC: [u8; 8] = *b"CAPRI8\0\x01";
 const HEADER_LEN: usize = 16;
 const MAX_COMPONENT: f32 = 1e15;
 

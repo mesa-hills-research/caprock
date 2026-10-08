@@ -742,7 +742,7 @@ mod tests {
             static NEXT: AtomicU64 = AtomicU64::new(0);
             loop {
                 let path = std::env::temp_dir().join(format!(
-                    "mhrv-writer-unit-{}-{}",
+                    "caprock-writer-test-{}-{}",
                     std::process::id(),
                     NEXT.fetch_add(1, Ordering::Relaxed),
                 ));

@@ -6,7 +6,7 @@
 //! LOCK                         the writer lock (an exclusive std file lock)
 //! CURRENT                      the name of the current manifest, one line
 //! gen-<20 digits>.json         one manifest per committed generation
-//! seg-<20 digits>.mhrv         segment files (section files, immutable)
+//! seg-<20 digits>.caprock      segment files (section files, immutable)
 //! del-<seg 20>-<gen 20>.bits   tombstones of a segment as of a generation (immutable)
 //! *.tmp                        unfinished writes (removed by the next writer)
 //! ```
@@ -70,9 +70,9 @@ pub fn manifest_file_name(generation: u64) -> String {
     format!("gen-{generation:020}.json")
 }
 
-/// `seg-<20 digits>.mhrv`.
+/// `seg-<20 digits>.caprock`.
 pub fn segment_file_name(id: u64) -> String {
-    format!("seg-{id:020}.mhrv")
+    format!("seg-{id:020}.caprock")
 }
 
 /// `del-<segment 20 digits>-<generation 20 digits>.bits`.
@@ -213,7 +213,7 @@ pub fn garbage(dir: &Path, current: &Manifest, previous: Option<&Manifest>) -> R
         let known = name.as_encoded_bytes().ends_with(b".tmp")
             || text.is_some_and(|name| {
                 parse_file_id(name, "gen-", ".json").is_some()
-                    || parse_file_id(name, "seg-", ".mhrv").is_some()
+                    || parse_file_id(name, "seg-", ".caprock").is_some()
                     || parse_tombstone_name(name).is_some()
             });
         if known {
@@ -289,7 +289,7 @@ mod tests {
             static NEXT: AtomicU64 = AtomicU64::new(0);
             loop {
                 let path = std::env::temp_dir().join(format!(
-                    "mhrv-manifest-{}-{}",
+                    "caprock-manifest-{}-{}",
                     std::process::id(),
                     NEXT.fetch_add(1, Ordering::Relaxed)
                 ));
@@ -360,11 +360,11 @@ mod tests {
         let name = manifest_file_name(1);
         let path = dir.0.join(&name);
         fs::write(&current_path, format!("{name}\r\n")).unwrap();
-        fs::write(&path, br#"{"format_version":2,"future_schema":true}"#).unwrap();
+        fs::write(&path, br#"{"format_version":3,"future_schema":true}"#).unwrap();
         assert!(matches!(
             read_current(&dir.0),
             Err(Error::UnsupportedFormat {
-                found: 2,
+                found: 3,
                 supported: FORMAT_VERSION
             })
         ));
@@ -418,10 +418,10 @@ mod tests {
         for name in [
             "notes.txt",
             "LOCK",
-            "seg-1.mhrv",
+            "seg-1.caprock",
             "gen-1.json",
-            "seg-00000000000000000001.mhrv.backup",
-            "seg-99999999999999999999.mhrv",
+            "seg-00000000000000000001.caprock.backup",
+            "seg-99999999999999999999.caprock",
             "del-00000000000000000001-00000000000000000001.bits.extra",
             "del-00000000000000000001-1.bits",
             "del-00000000000000000001-+0000000000000000001.bits",
