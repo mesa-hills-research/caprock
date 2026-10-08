@@ -51,9 +51,9 @@ pub mod filter;
 pub mod store;
 pub mod types;
 
-/// Declares the internal unit modules: private normally, public (and hidden) with the
-/// `internals` feature, which the host's per-unit acceptance tests (tests/uNN_*.rs) use.
-/// Nothing in them is a public API.
+/// Declares the internal modules: private normally, public (and hidden) with the
+/// test-only `internals` feature, which the integration tests of tests/ use. Nothing in
+/// them is a public API.
 macro_rules! internal_modules {
     ($($name:ident),* $(,)?) => {
         $(

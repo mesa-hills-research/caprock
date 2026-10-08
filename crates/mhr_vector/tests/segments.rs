@@ -1,4 +1,4 @@
-//! Acceptance tests of unit U11 (segment): writing, opening, lookups, determinism.
+//! Sealed segments: writing, opening, lookups and deterministic bytes.
 #![cfg(feature = "internals")]
 
 mod common;

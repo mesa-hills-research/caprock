@@ -1,4 +1,4 @@
-//! Acceptance tests of unit U02 (util): stable hash, PRNG, bitset.
+//! The stable hash, the seeded PRNG and the bitset.
 #![cfg(feature = "internals")]
 
 use mhr_vector::util::{Bitset, SplitMix64, mix64, stable_hash};

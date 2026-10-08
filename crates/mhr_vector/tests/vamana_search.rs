@@ -1,5 +1,5 @@
-//! Acceptance tests of unit U15 (beam search), on graphs built here (exact k-NN graphs),
-//! so this unit does not depend on U14.
+//! Beam search over Vamana graphs, on exact k-NN graphs built here, so these tests
+//! hold whatever the graph construction does.
 #![cfg(feature = "internals")]
 
 mod common;

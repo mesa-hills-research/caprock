@@ -1,5 +1,5 @@
-//! Acceptance tests of unit U18 (snapshot search and readers), through the public API,
-//! against oracle scenarios.
+//! Snapshot search and readers, through the public API, against random operation
+//! sequences run on the reference implementation too.
 
 mod common;
 

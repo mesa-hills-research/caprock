@@ -1,5 +1,4 @@
-//! Acceptance tests of unit U04 (filter): the oracle's semantics, and compilation
-//! against a segment's path table.
+//! Filter semantics, and filters compiled against a segment's path table.
 #![cfg(feature = "internals")]
 
 use std::ops::Range;

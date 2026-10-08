@@ -1,4 +1,4 @@
-//! Acceptance tests of unit U19 (embedding models and the embedding cache).
+//! Embedding models and the embedding cache.
 
 mod common;
 

@@ -1,4 +1,4 @@
-//! Acceptance tests of unit U12 (delta): exact search, isolation of views, cheap views.
+//! The in-memory delta: exact search, isolated views, cheap views.
 #![cfg(feature = "internals")]
 
 mod common;

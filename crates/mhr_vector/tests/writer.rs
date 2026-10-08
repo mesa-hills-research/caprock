@@ -1,4 +1,4 @@
-//! Acceptance tests of unit U17 (writer and snapshot accessors), through the public API.
+//! The writer and snapshot accessors, through the public API.
 
 mod common;
 

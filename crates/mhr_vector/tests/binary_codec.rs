@@ -1,4 +1,4 @@
-//! Acceptance tests of unit U09 (binary codec).
+//! The binary codec.
 #![cfg(feature = "internals")]
 
 mod common;

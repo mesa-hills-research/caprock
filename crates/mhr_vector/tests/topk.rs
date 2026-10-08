@@ -1,4 +1,4 @@
-//! Acceptance tests of unit U03 (topk): selection and merging with deterministic ties.
+//! Top-k selection and merging with deterministic ties.
 #![cfg(feature = "internals")]
 
 use std::cmp::Ordering;

@@ -1,4 +1,4 @@
-//! Acceptance tests of unit U08 (int8 codec).
+//! The int8 codec.
 #![cfg(feature = "internals")]
 
 mod common;

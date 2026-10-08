@@ -1,4 +1,4 @@
-// Shared by the int8 and binary acceptance tests (included with `include!`).
+// Shared by the int8 and binary codec tests (included with `include!`).
 
 /// Mean over queries of the share of the true top 10 found among the codec's top
 /// `candidates`, and the mean absolute estimate error with the mean absolute score.

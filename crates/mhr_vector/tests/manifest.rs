@@ -1,4 +1,4 @@
-//! Acceptance tests of unit U06 (manifest): names, CURRENT, garbage, the writer lock.
+//! Manifests: file names, CURRENT, garbage collection and the writer lock.
 #![cfg(feature = "internals")]
 
 mod common;

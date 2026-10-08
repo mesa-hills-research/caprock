@@ -1,4 +1,4 @@
-//! Helpers shared by the acceptance tests (host-owned).
+//! Helpers shared by the integration tests.
 #![allow(dead_code)]
 
 pub mod store;

@@ -1,4 +1,5 @@
-//! Acceptance tests of unit U01 (distance): canonical kernels bit-identical to the oracle.
+//! Distance kernels: the canonical dot product, squared L2 distance and normalization,
+//! bit for bit equal to the reference implementation's.
 
 mod common;
 

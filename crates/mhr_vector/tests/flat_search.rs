@@ -1,4 +1,4 @@
-//! Acceptance tests of unit U13 (flat search and rescoring within a segment).
+//! Flat search and rescoring within a segment.
 #![cfg(feature = "internals")]
 
 mod common;

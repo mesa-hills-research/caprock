@@ -1,4 +1,4 @@
-//! Acceptance tests of unit U05 (format): section files, positional reads, atomic writes.
+//! Section files: layout, checksums, positional reads and atomic writes.
 #![cfg(feature = "internals")]
 
 mod common;

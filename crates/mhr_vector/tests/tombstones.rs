@@ -1,4 +1,4 @@
-//! Acceptance tests of unit U10 (tombstones).
+//! Tombstones: copy-on-write deletion bitsets and their files.
 #![cfg(feature = "internals")]
 
 mod common;

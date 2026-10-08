@@ -1,4 +1,4 @@
-//! Acceptance tests of unit U07 (quant core): the f32 codec, dispatch, training samples.
+//! Codes: the f32 codec, codec dispatch and training samples.
 #![cfg(feature = "internals")]
 
 mod common;
