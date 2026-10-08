@@ -42,6 +42,9 @@
 //! ```
 
 #![forbid(unsafe_code)]
+// A few internal helpers are used only by the per-unit acceptance tests, which reach them
+// through the `internals` feature.
+#![cfg_attr(not(feature = "internals"), allow(dead_code))]
 
 pub mod config;
 pub mod distance;
