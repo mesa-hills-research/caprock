@@ -154,6 +154,12 @@ impl SegmentFilter {
         {
             return false;
         }
+        self.allows_language(ordinal, table)
+    }
+
+    /// Whether ordinal `ordinal`'s language matches (the whole check for an ordinal
+    /// already known to be in [`Self::ranges`]).
+    pub fn allows_language<T: PathTable + ?Sized>(&self, ordinal: u32, table: &T) -> bool {
         match &self.languages {
             None => true,
             Some(ids) => !ids.is_empty() && ids.binary_search(&table.language_of(ordinal)).is_ok(),

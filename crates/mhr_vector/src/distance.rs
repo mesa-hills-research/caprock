@@ -24,7 +24,7 @@ pub const MAX_ABS_COMPONENT: f32 = 1e15;
 
 // Keep the same tree even for short vectors: unused lanes contain positive zero.
 #[inline]
-fn reduce(mut acc: [f32; LANES]) -> f32 {
+pub(crate) fn reduce(mut acc: [f32; LANES]) -> f32 {
     for width in [8, 4, 2, 1] {
         for lane in 0..width {
             acc[lane] += acc[lane + width];

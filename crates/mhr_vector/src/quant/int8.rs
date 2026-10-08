@@ -193,6 +193,35 @@ impl Codec for Int8Codec {
         portable_query(self.metric, query, steps, code)
     }
 
+    fn score_many(&self, query: &Int8Query, codes: &[u8], ids: &[u32], scores: &mut Vec<f32>) {
+        assert_eq!(
+            query.values.len(),
+            self.dim,
+            "int8 query dimension mismatch"
+        );
+        let steps = &self.params[self.dim..];
+        #[cfg(target_arch = "x86_64")]
+        if let Some(simd) = crate::quant::x86_v3() {
+            return pulp::Simd::vectorize(
+                simd,
+                avx2::QueryCodes {
+                    simd,
+                    metric: self.metric,
+                    query,
+                    steps,
+                    codes,
+                    ids,
+                    scores,
+                },
+            );
+        }
+        let len = self.code_len();
+        scores.extend(ids.iter().map(|&id| {
+            let start = id as usize * len;
+            portable_query(self.metric, query, steps, &codes[start..start + len])
+        }));
+    }
+
     fn score_codes(&self, a: &[u8], b: &[u8]) -> f32 {
         assert_eq!(a.len(), self.code_len(), "int8 code length mismatch");
         assert_eq!(b.len(), self.code_len(), "int8 code length mismatch");
@@ -359,6 +388,7 @@ mod avx2 {
 
     use pulp::x86::V3;
 
+    use super::Int8Query;
     use crate::config::Metric;
 
     pub(super) struct CodePair<'a> {
@@ -386,7 +416,7 @@ mod avx2 {
     pub(super) struct QueryCode<'a> {
         pub simd: V3,
         pub metric: Metric,
-        pub query: &'a super::Int8Query,
+        pub query: &'a Int8Query,
         pub steps: &'a [f32],
         pub code: &'a [u8],
     }
@@ -396,49 +426,9 @@ mod avx2 {
 
         #[inline(always)]
         fn with_simd<S: pulp::Simd>(self, _: S) -> f32 {
-            let (simd, avx) = (self.simd, self.simd.avx);
-            let (values, values_tail) = self.query.values.as_chunks::<16>();
-            let (steps, steps_tail) = self.steps.as_chunks::<16>();
-            let (code, code_tail) = self.code.as_chunks::<16>();
-            let mut low = avx._mm256_setzero_ps();
-            let mut high = avx._mm256_setzero_ps();
-            match self.metric {
-                Metric::Cosine | Metric::Dot => {
-                    for (values, code) in values.iter().zip(code) {
-                        let (v_low, v_high) = halves(values);
-                        let (c_low, c_high) = widen(simd, code);
-                        let term = |v, c| avx._mm256_mul_ps(v, avx._mm256_cvtepi32_ps(c));
-                        low = avx._mm256_add_ps(low, term(v_low, c_low));
-                        high = avx._mm256_add_ps(high, term(v_high, c_high));
-                    }
-                    let mut lanes = lanes(low, high);
-                    for (lane, (&v, &c)) in lanes.iter_mut().zip(values_tail.iter().zip(code_tail)) {
-                        *lane += v * c as f32;
-                    }
-                    self.query.constant + super::reduce(lanes)
-                }
-                Metric::L2 => {
-                    for ((values, steps), code) in values.iter().zip(steps).zip(code) {
-                        let (v_low, v_high) = halves(values);
-                        let (step_low, step_high) = halves(steps);
-                        let (c_low, c_high) = widen(simd, code);
-                        let term = |v, step, c| {
-                            let x = avx._mm256_mul_ps(step, avx._mm256_cvtepi32_ps(c));
-                            let delta = avx._mm256_sub_ps(v, x);
-                            avx._mm256_mul_ps(delta, delta)
-                        };
-                        low = avx._mm256_add_ps(low, term(v_low, step_low, c_low));
-                        high = avx._mm256_add_ps(high, term(v_high, step_high, c_high));
-                    }
-                    let mut lanes = lanes(low, high);
-                    let tail = values_tail.iter().zip(steps_tail).zip(code_tail);
-                    for (lane, ((&v, &step), &c)) in lanes.iter_mut().zip(tail) {
-                        let delta = v - step * c as f32;
-                        *lane += delta * delta;
-                    }
-                    -super::reduce(lanes)
-                }
-            }
+            let one = [self.code];
+            let [score] = query_scores(self.simd, self.metric, self.query, self.steps, one, None);
+            score
         }
     }
 
@@ -483,6 +473,173 @@ mod avx2 {
                 }
             }
         }
+    }
+
+    /// [`QueryCode`] for many codes, four at a time: each code keeps its own
+    /// accumulators, and the four chains overlap.
+    pub(super) struct QueryCodes<'a> {
+        pub simd: V3,
+        pub metric: Metric,
+        pub query: &'a Int8Query,
+        pub steps: &'a [f32],
+        pub codes: &'a [u8],
+        pub ids: &'a [u32],
+        pub scores: &'a mut Vec<f32>,
+    }
+
+    impl pulp::WithSimd for QueryCodes<'_> {
+        type Output = ();
+
+        #[inline(always)]
+        fn with_simd<S: pulp::Simd>(self, _: S) {
+            let len = self.steps.len();
+            let code = |id: u32| {
+                let start = id as usize * len;
+                &self.codes[start..start + len]
+            };
+            let (groups, rest) = self.ids.as_chunks::<4>();
+            for (g, group) in groups.iter().enumerate() {
+                let codes = group.map(code);
+                // Prefetch the codes of a later group: four codes of a contiguous scan
+                // span a page, and hardware prefetchers stop at page boundaries.
+                let ahead = groups.get(g + PREFETCH_GROUPS).map(|ids| ids.map(code));
+                let group = query_scores(self.simd, self.metric, self.query, self.steps, codes, ahead);
+                self.scores.extend(group);
+            }
+            for &id in rest {
+                let one = [code(id)];
+                let one = query_scores(self.simd, self.metric, self.query, self.steps, one, None);
+                self.scores.extend(one);
+            }
+        }
+    }
+
+    /// How many groups ahead [`QueryCodes`] prefetches (8 KiB of 1024-byte codes).
+    const PREFETCH_GROUPS: usize = 2;
+
+    #[inline(always)]
+    fn query_scores<const N: usize>(
+        simd: V3,
+        metric: Metric,
+        query: &Int8Query,
+        steps: &[f32],
+        codes: [&[u8]; N],
+        ahead: Option<[&[u8]; N]>,
+    ) -> [f32; N] {
+        match metric {
+            Metric::Cosine | Metric::Dot => {
+                query_dot(simd, &query.values, codes, ahead).map(|sum| query.constant + sum)
+            }
+            Metric::L2 => query_l2(simd, &query.values, steps, codes, ahead).map(|sum| -sum),
+        }
+    }
+
+    /// `sum(value * code)` for `N` codes, in [`super::sum_terms`]'s lanes, prefetching
+    /// the codes `ahead`, if any.
+    #[inline(always)]
+    fn query_dot<const N: usize>(
+        simd: V3,
+        values: &[f32],
+        codes: [&[u8]; N],
+        ahead: Option<[&[u8]; N]>,
+    ) -> [f32; N] {
+        let avx = simd.avx;
+        let (values, values_tail) = values.as_chunks::<16>();
+        let codes = codes.map(|code| split(code, values.len()));
+        // Checked once here, so the loop indexes the chunks without checks.
+        assert!(codes.iter().all(|(body, _)| body.len() == values.len()));
+        let mut low = [avx._mm256_setzero_ps(); N];
+        let mut high = [avx._mm256_setzero_ps(); N];
+        for (j, values) in values.iter().enumerate() {
+            if let Some(ahead) = ahead
+                && j % 4 == 0
+            {
+                prefetch(simd, ahead, j * 16);
+            }
+            let (value_low, value_high) = halves(values);
+            for c in 0..N {
+                let (code_low, code_high) = widen(simd, &codes[c].0[j]);
+                let term = |value, code| avx._mm256_mul_ps(value, avx._mm256_cvtepi32_ps(code));
+                low[c] = avx._mm256_add_ps(low[c], term(value_low, code_low));
+                high[c] = avx._mm256_add_ps(high[c], term(value_high, code_high));
+            }
+        }
+        let mut sums = [0.0; N];
+        for c in 0..N {
+            let mut lanes = lanes(low[c], high[c]);
+            for (lane, (&value, &code)) in lanes.iter_mut().zip(values_tail.iter().zip(codes[c].1)) {
+                *lane += value * code as f32;
+            }
+            sums[c] = super::reduce(lanes);
+        }
+        sums
+    }
+
+    /// `sum((value - step * code)^2)` for `N` codes, in [`super::sum_terms`]'s lanes,
+    /// prefetching the codes `ahead`, if any.
+    #[inline(always)]
+    fn query_l2<const N: usize>(
+        simd: V3,
+        values: &[f32],
+        steps: &[f32],
+        codes: [&[u8]; N],
+        ahead: Option<[&[u8]; N]>,
+    ) -> [f32; N] {
+        let avx = simd.avx;
+        let (values, values_tail) = values.as_chunks::<16>();
+        let (steps, steps_tail) = steps.as_chunks::<16>();
+        let steps = &steps[..values.len()];
+        let codes = codes.map(|code| split(code, values.len()));
+        // Checked once here, so the loop indexes the chunks without checks.
+        assert!(codes.iter().all(|(body, _)| body.len() == values.len()));
+        let mut low = [avx._mm256_setzero_ps(); N];
+        let mut high = [avx._mm256_setzero_ps(); N];
+        for (j, values) in values.iter().enumerate() {
+            if let Some(ahead) = ahead
+                && j % 4 == 0
+            {
+                prefetch(simd, ahead, j * 16);
+            }
+            let (value_low, value_high) = halves(values);
+            let (step_low, step_high) = halves(&steps[j]);
+            for c in 0..N {
+                let (code_low, code_high) = widen(simd, &codes[c].0[j]);
+                let term = |value, step, code| {
+                    let decoded = avx._mm256_mul_ps(step, avx._mm256_cvtepi32_ps(code));
+                    let delta = avx._mm256_sub_ps(value, decoded);
+                    avx._mm256_mul_ps(delta, delta)
+                };
+                low[c] = avx._mm256_add_ps(low[c], term(value_low, step_low, code_low));
+                high[c] = avx._mm256_add_ps(high[c], term(value_high, step_high, code_high));
+            }
+        }
+        let mut sums = [0.0; N];
+        for c in 0..N {
+            let mut lanes = lanes(low[c], high[c]);
+            let tail = values_tail.iter().zip(steps_tail).zip(codes[c].1);
+            for (lane, ((&value, &step), &code)) in lanes.iter_mut().zip(tail) {
+                let delta = value - step * code as f32;
+                *lane += delta * delta;
+            }
+            sums[c] = super::reduce(lanes);
+        }
+        sums
+    }
+
+    /// Prefetches the cache line at `offset` of each code (a hint: it never faults).
+    #[inline(always)]
+    fn prefetch<const N: usize>(simd: V3, codes: [&[u8]; N], offset: usize) {
+        for code in codes {
+            let line = code.as_ptr().wrapping_add(offset).cast::<i8>();
+            simd.sse._mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>(line);
+        }
+    }
+
+    /// A code's whole 16-byte chunks (exactly `chunks` of them) and its tail.
+    #[inline(always)]
+    fn split(code: &[u8], chunks: usize) -> (&[[u8; 16]], &[u8]) {
+        let (body, tail) = code.as_chunks::<16>();
+        (&body[..chunks], tail)
     }
 
     /// Bytes `0..8` and `8..16` of a chunk as 32-bit integers.
@@ -699,6 +856,64 @@ mod tests {
                     assert_eq!(codec.score(&query, b).to_bits(), expected.to_bits());
                     let portable = portable_query(metric, &query, steps, b);
                     assert_eq!(portable.to_bits(), expected.to_bits(), "{metric:?} {dim}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn batched_query_scores_equal_the_scalar_formula_bit_for_bit() {
+        // The formula before vectorization: one `sum_terms` per score.
+        let reference = |codec: &Int8Codec, query: &Int8Query, code: &[u8]| {
+            let (dim, values) = (codec.dim, &query.values);
+            let steps = &codec.params[dim..];
+            match codec.metric {
+                Metric::Cosine | Metric::Dot => {
+                    query.constant + sum_terms(dim, |i| values[i] * code[i] as f32)
+                }
+                Metric::L2 => -sum_terms(dim, |i| {
+                    let delta = values[i] - steps[i] * code[i] as f32;
+                    delta * delta
+                }),
+            }
+        };
+        let mut rng = crate::util::SplitMix64::new(11);
+        for dim in (1..=40).chain([63, 64, 100, 255, 256, 1024, 1027]) {
+            let n = 23;
+            let codes: Vec<u8> = (0..n * dim).map(|_| rng.next_u64() as u8).collect();
+            let mut params: Vec<f32> = (0..dim)
+                .map(|_| (rng.below(2001) as f32 - 1000.0) / 997.0)
+                .collect();
+            params.extend((0..dim).map(|i| {
+                // Include constant dimensions (zero steps) and tiny steps.
+                [0.0, 1e-7, 0.013, 0.5][(i + rng.below(4) as usize) % 4]
+            }));
+            let vector: Vec<f32> = (0..dim)
+                .map(|_| (rng.below(2001) as f32 - 1000.0) / 300.0)
+                .collect();
+            for metric in METRICS {
+                let codec = Int8Codec {
+                    metric,
+                    dim,
+                    params: params.clone(),
+                };
+                let query = codec.prepare(&vector);
+                let steps = &params[dim..];
+                let code = |i: u32| &codes[i as usize * dim..(i as usize + 1) * dim];
+                // Groups of four and a remainder, out of order, with repeats.
+                let ids: Vec<u32> = (0..n as u32).rev().chain([3, 3, 0]).collect();
+                for len in [0, 1, 3, 4, 5, 8, ids.len()] {
+                    let mut many = vec![f32::NAN];
+                    codec.score_many(&query, &codes, &ids[..len], &mut many);
+                    assert!(many[0].is_nan(), "appends");
+                    assert_eq!(many.len(), len + 1);
+                    for (&id, batched) in ids.iter().zip(&many[1..]) {
+                        let expected = reference(&codec, &query, code(id)).to_bits();
+                        assert_eq!(batched.to_bits(), expected, "{metric:?} {dim}");
+                        assert_eq!(codec.score(&query, code(id)).to_bits(), expected);
+                        let portable = portable_query(metric, &query, steps, code(id));
+                        assert_eq!(portable.to_bits(), expected);
+                    }
                 }
             }
         }

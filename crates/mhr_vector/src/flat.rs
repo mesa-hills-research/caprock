@@ -1,5 +1,6 @@
 //! Flat search and rescoring within one segment (unit U13; docs/requirements.md, "Search").
 
+use crate::config::CodeKind;
 use crate::distance;
 use crate::error::Result;
 use crate::filter::SegmentFilter;
@@ -40,6 +41,11 @@ pub fn flat_search(segment: &Segment, q: &SegmentQuery<'_>) -> Result<Vec<Hit>> 
 pub fn exact_search(segment: &Segment, q: &SegmentQuery<'_>) -> Result<Vec<Hit>> {
     if nothing_to_search(segment, q) {
         return Ok(Vec::new());
+    }
+    // f32 codes are the stored vectors, in memory, and score canonically: a flat search
+    // of k candidates is exact and reads only k vectors from the file.
+    if segment.codec().kind() == CodeKind::F32 {
+        return flat_search(segment, &SegmentQuery { rescore: q.k, ..*q });
     }
     score_vectors(segment, q.query, matching_ordinals(segment, q), q.k)
 }
@@ -83,24 +89,44 @@ fn matching_ordinals<'a>(
     // A compiled filter has disjoint, sorted ranges. Skip unrelated paths entirely,
     // especially important when a selective filter makes a large segment scan flat.
     let all = q.filter.is_none().then_some(0..segment.len());
+    // Within the ranges, only deletions and the language can exclude an ordinal.
+    let deletions = q.tombstones.deleted() > 0;
     all.into_iter()
         .chain(q.filter.into_iter().flat_map(|f| f.ranges.iter().cloned()))
         .flatten()
         .filter(move |&ordinal| {
-            !q.tombstones.is_deleted(ordinal) && q.filter.is_none_or(|f| f.allows(ordinal, segment))
+            !(deletions && q.tombstones.is_deleted(ordinal))
+                && q.filter.is_none_or(|f| f.allows_language(ordinal, segment))
         })
 }
+
+// Ordinals per Codec::score_many call: enough for codecs to score several codes at
+// once, small enough to stay in L1.
+const SCAN_BLOCK: usize = 256;
 
 fn scan_codes<C: Codec>(segment: &Segment, q: &SegmentQuery<'_>, codec: &C) -> Vec<(f32, u32)> {
     let prepared = codec.prepare(q.query);
     let wanted = q.rescore.max(q.k).min(q.tombstones.live() as usize);
     let mut top = TopK::new(wanted);
-    let width = codec.code_len();
     let codes = segment.codes();
-    for ordinal in matching_ordinals(segment, q) {
-        let start = ordinal as usize * width;
-        let score = codec.score(&prepared, &codes[start..start + width]);
-        top.offer(score, ordinal, segment);
+    let mut ordinals = matching_ordinals(segment, q);
+    let mut block = Vec::with_capacity(SCAN_BLOCK);
+    let mut scores = Vec::with_capacity(SCAN_BLOCK);
+    loop {
+        block.clear();
+        block.extend(ordinals.by_ref().take(SCAN_BLOCK));
+        if block.is_empty() {
+            break;
+        }
+        scores.clear();
+        codec.score_many(&prepared, codes, &block, &mut scores);
+        for (&ordinal, &score) in block.iter().zip(&scores) {
+            // Below the worst kept score a candidate cannot enter (an equal one can,
+            // by key), so most candidates skip the heap.
+            if top.threshold().is_none_or(|worst| score >= worst) {
+                top.offer(score, ordinal, segment);
+            }
+        }
     }
     top.into_sorted(segment)
 }

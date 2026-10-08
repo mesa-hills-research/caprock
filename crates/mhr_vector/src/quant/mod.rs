@@ -11,6 +11,7 @@
 //! [`with_codec!`] dispatches once per segment search, not once per vector.
 
 pub mod binary;
+mod float;
 pub mod int8;
 
 pub use binary::BinaryCodec;
@@ -57,6 +58,15 @@ pub trait Codec: Send + Sync {
     fn prepare(&self, query: &[f32]) -> Self::Query;
     /// The estimated score of a code for a prepared query.
     fn score(&self, query: &Self::Query, code: &[u8]) -> f32;
+    /// Appends `score(query, code)` for the code of each id in `ids`, bit for bit;
+    /// `codes` holds `code_len()` bytes per id. Codecs may score several codes at once.
+    fn score_many(&self, query: &Self::Query, codes: &[u8], ids: &[u32], scores: &mut Vec<f32>) {
+        let len = self.code_len();
+        scores.extend(ids.iter().map(|&id| {
+            let start = id as usize * len;
+            self.score(query, &codes[start..start + len])
+        }));
+    }
     /// The estimated score between two codes (graph construction).
     fn score_codes(&self, a: &[u8], b: &[u8]) -> f32;
     /// Appends `score_codes(a, code)` for the code of each id in `ids`, bit for bit;
@@ -119,10 +129,15 @@ impl Codec for F32Codec {
         query.to_vec()
     }
 
-    /// The canonical score of the decoded vector.
+    /// The canonical score of the stored vector (the code, read in place).
     fn score(&self, query: &Vec<f32>, code: &[u8]) -> f32 {
         assert_eq!(query.len(), self.dim, "f32 query dimension mismatch");
-        distance::score(self.metric, query, &self.decode(code))
+        float::score(self.metric, query, code)
+    }
+
+    fn score_many(&self, query: &Vec<f32>, codes: &[u8], ids: &[u32], scores: &mut Vec<f32>) {
+        assert_eq!(query.len(), self.dim, "f32 query dimension mismatch");
+        float::score_many(self.metric, query, codes, ids, scores);
     }
 
     fn score_codes(&self, a: &[u8], b: &[u8]) -> f32 {

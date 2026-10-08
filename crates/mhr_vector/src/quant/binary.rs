@@ -161,6 +161,17 @@ impl BinaryCodec {
         }
     }
 
+    /// The asymmetric estimate of a code with sign projection `projection`.
+    #[inline(always)]
+    fn estimate(&self, query: &BinaryQuery, projection: f32, code: &[u8]) -> f32 {
+        let (norm, centre_dot) = self.corrections(code);
+        let dot = projection * (norm * self.params[self.dim]);
+        match self.metric {
+            Metric::Cosine | Metric::Dot => query.constant + centre_dot + dot,
+            Metric::L2 => query.constant - norm * norm + 2.0 * dot,
+        }
+    }
+
     #[inline(always)]
     fn corrections(&self, code: &[u8]) -> (f32, f32) {
         let offset = self.bit_bytes();
@@ -247,17 +258,25 @@ impl Codec for BinaryCodec {
     }
 
     fn score(&self, query: &BinaryQuery, code: &[u8]) -> f32 {
-        let mut projection = 0.0;
-        for (j, table) in query.values.as_chunks::<16>().0.iter().enumerate() {
-            let nibble = (code[j / 2] >> ((j % 2) * 4)) & 15;
-            projection += table[usize::from(nibble)];
+        let [projection] = projections(&query.values, [code]);
+        self.estimate(query, projection, code)
+    }
+
+    fn score_many(&self, query: &BinaryQuery, codes: &[u8], ids: &[u32], scores: &mut Vec<f32>) {
+        let len = self.code_len();
+        let code = |id: u32| {
+            let start = id as usize * len;
+            &codes[start..start + len]
+        };
+        let (groups, rest) = ids.as_chunks::<SCORE_GROUP>();
+        for group in groups {
+            let group = group.map(code);
+            let projections = projections(&query.values, group);
+            for (projection, code) in projections.into_iter().zip(group) {
+                scores.push(self.estimate(query, projection, code));
+            }
         }
-        let (norm, centre_dot) = self.corrections(code);
-        let dot = projection * (norm * self.params[self.dim]);
-        match self.metric {
-            Metric::Cosine | Metric::Dot => query.constant + centre_dot + dot,
-            Metric::L2 => query.constant - norm * norm + 2.0 * dot,
-        }
+        scores.extend(rest.iter().map(|&id| self.score(query, code(id))));
     }
 
     fn score_codes(&self, a: &[u8], b: &[u8]) -> f32 {
@@ -289,6 +308,38 @@ impl Codec for BinaryCodec {
         bytes.extend_from_slice(&f32s_to_le(&self.params));
         bytes
     }
+}
+
+/// Codes [`BinaryCodec::score_many`] scores at once.
+const SCORE_GROUP: usize = 8;
+
+/// The sign projections of `N` codes on a prepared query: for each code, the sum of
+/// table `j`'s entry for nibble `j` (the low nibble of byte `j / 2` for even `j`, the
+/// high one for odd `j`), added in increasing `j`. Each code's sum is one sequential
+/// chain, so scoring several codes together lets the chains overlap without changing
+/// any code's bits.
+#[inline(always)]
+fn projections<const N: usize>(values: &[f32], codes: [&[u8]; N]) -> [f32; N] {
+    let tables = values.as_chunks::<16>().0;
+    let (pairs, last) = tables.as_chunks::<2>();
+    let codes = codes.map(|code| &code[..tables.len().div_ceil(2)]);
+    let paired = codes.map(|code| &code[..pairs.len()]);
+    // Checked once here, so the loop indexes the codes without checks.
+    assert!(paired.iter().all(|code| code.len() == pairs.len()));
+    let mut projections = [0.0f32; N];
+    for (j, [low, high]) in pairs.iter().enumerate() {
+        for (projection, code) in projections.iter_mut().zip(paired) {
+            let byte = code[j];
+            *projection += low[usize::from(byte & 15)];
+            *projection += high[usize::from(byte >> 4)];
+        }
+    }
+    if let [table] = last {
+        for (projection, code) in projections.iter_mut().zip(codes) {
+            *projection += table[usize::from(code[pairs.len()] & 15)];
+        }
+    }
+    projections
 }
 
 /// The Hamming distance of two codes' first `dim` sign bits (whole words; padding
@@ -401,6 +452,50 @@ mod tests {
             assert_eq!(codec.score(&q, &code), codec.score(&q, &dirty));
             for (j, &word) in q.bits.iter().enumerate() {
                 assert_eq!(word, u64::from_le_bytes(code[j * 8..j * 8 + 8].try_into().unwrap()));
+            }
+        }
+    }
+
+    #[test]
+    fn batched_and_interleaved_lookups_equal_the_sequential_sum_bit_for_bit() {
+        // The estimate before interleaving: one sequential sum over the tables.
+        let reference = |codec: &BinaryCodec, query: &BinaryQuery, code: &[u8]| {
+            let mut projection = 0.0;
+            for (j, table) in query.values.as_chunks::<16>().0.iter().enumerate() {
+                let nibble = (code[j / 2] >> ((j % 2) * 4)) & 15;
+                projection += table[usize::from(nibble)];
+            }
+            let (norm, centre_dot) = codec.corrections(code);
+            let dot = projection * (norm * codec.params[codec.dim]);
+            match codec.metric {
+                Metric::Cosine | Metric::Dot => query.constant + centre_dot + dot,
+                Metric::L2 => query.constant - norm * norm + 2.0 * dot,
+            }
+        };
+        let mut rng = crate::util::SplitMix64::new(5);
+        let mut value = || (rng.below(2001) as f32 - 1000.0) / 300.0;
+        for dim in [1, 2, 3, 4, 5, 7, 8, 9, 63, 64, 65, 127, 128, 129, 1024, 1027] {
+            let n = 21;
+            let sample: Vec<f32> = (0..n * dim).map(|_| value()).collect();
+            let query: Vec<f32> = (0..dim).map(|_| value()).collect();
+            for metric in [Metric::Cosine, Metric::Dot, Metric::L2] {
+                let codec = BinaryCodec::train(metric, dim, &sample, 0).unwrap();
+                let len = codec.code_len();
+                let codes: Vec<u8> = sample.chunks_exact(dim).flat_map(|v| encode(&codec, v)).collect();
+                let prepared = codec.prepare(&query);
+                let code = |i: u32| &codes[i as usize * len..(i as usize + 1) * len];
+                let ids: Vec<u32> = (0..n as u32).rev().chain([2, 2]).collect();
+                for count in [0, 1, 7, 8, 9, 16, ids.len()] {
+                    let mut many = vec![f32::NAN];
+                    codec.score_many(&prepared, &codes, &ids[..count], &mut many);
+                    assert!(many[0].is_nan(), "appends");
+                    assert_eq!(many.len(), count + 1);
+                    for (&id, batched) in ids.iter().zip(&many[1..]) {
+                        let expected = reference(&codec, &prepared, code(id)).to_bits();
+                        assert_eq!(batched.to_bits(), expected, "{metric:?} {dim}");
+                        assert_eq!(codec.score(&prepared, code(id)).to_bits(), expected);
+                    }
+                }
             }
         }
     }
