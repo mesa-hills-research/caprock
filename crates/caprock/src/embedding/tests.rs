@@ -28,7 +28,7 @@ fn hash(i: u8) -> ContentHash {
 
 #[test]
 fn model_bounds_and_bytewise_fingerprint_safety() {
-    let mut model = EmbeddingModel::voyage_code_4(1);
+    let mut model = EmbeddingModel::voyage_code_4(1, "my-app/chunk-v1");
     for dim in [1, crate::MAX_DIM] {
         model.dimensions = dim;
         model.validate().unwrap();
@@ -57,7 +57,7 @@ fn model_bounds_and_bytewise_fingerprint_safety() {
     model.revision = Some("r/2".into());
     assert_eq!(
         model.document_fingerprint(),
-        "..___-_x__-1-float-none-arko_index_chunk-v1-r_2"
+        "..___-_x__-1-float-none-my-app_chunk-v1-r_2"
     );
     assert_eq!(
         Path::new(&model.document_fingerprint())
@@ -70,7 +70,7 @@ fn model_bounds_and_bytewise_fingerprint_safety() {
 #[test]
 fn query_changes_reuse_documents_and_switching_back_reuses_the_old_cache() {
     let root = TestDir::new();
-    let model = EmbeddingModel::voyage_code_4(2);
+    let model = EmbeddingModel::voyage_code_4(2, "my-app/chunk-v1");
     let mut cache = EmbeddingCache::open(&root.0, &model).unwrap();
     cache.put(&[(hash(1), &[1.0, -0.0])]).unwrap();
     cache.flush().unwrap();
@@ -97,7 +97,7 @@ fn query_changes_reuse_documents_and_switching_back_reuses_the_old_cache() {
 #[test]
 fn batch_refusal_and_float_bits_and_duplicate_hashes() {
     let root = TestDir::new();
-    let model = EmbeddingModel::voyage_code_4(4);
+    let model = EmbeddingModel::voyage_code_4(4, "my-app/chunk-v1");
     let mut cache = EmbeddingCache::open(&root.0, &model).unwrap();
     let vector = [0.0, -0.0, f32::from_bits(1), f32::MAX];
     cache
@@ -147,7 +147,7 @@ fn batch_refusal_and_float_bits_and_duplicate_hashes() {
 #[test]
 fn every_partial_record_tail_is_truncated_before_the_next_append() {
     let root = TestDir::new();
-    let model = EmbeddingModel::voyage_code_4(1);
+    let model = EmbeddingModel::voyage_code_4(1, "my-app/chunk-v1");
     let mut cache = EmbeddingCache::open(&root.0, &model).unwrap();
     cache.put(&[(hash(1), &[1.0]), (hash(2), &[2.0])]).unwrap();
     cache.flush().unwrap();
@@ -178,7 +178,7 @@ fn every_partial_record_tail_is_truncated_before_the_next_append() {
 #[test]
 fn corrupt_record_stops_replay_and_reads_verify_checksums() {
     let root = TestDir::new();
-    let model = EmbeddingModel::voyage_code_4(1);
+    let model = EmbeddingModel::voyage_code_4(1, "my-app/chunk-v1");
     let mut cache = EmbeddingCache::open(&root.0, &model).unwrap();
     cache
         .put(&[(hash(1), &[1.0]), (hash(2), &[2.0]), (hash(1), &[3.0])])
@@ -211,7 +211,7 @@ fn corrupt_record_stops_replay_and_reads_verify_checksums() {
 #[test]
 fn invalid_headers_and_model_identity_refuse_without_rewriting_and_release_lock() {
     let root = TestDir::new();
-    let model = EmbeddingModel::voyage_code_4(1);
+    let model = EmbeddingModel::voyage_code_4(1, "my-app/chunk-v1");
     let cache = EmbeddingCache::open(&root.0, &model).unwrap();
     let path = cache.log_path.clone();
     let model_path = cache.dir.join("model.json");
@@ -247,7 +247,7 @@ fn invalid_headers_and_model_identity_refuse_without_rewriting_and_release_lock(
 #[test]
 fn compaction_is_deterministic_and_selects_only_published_logs() {
     let root = TestDir::new();
-    let model = EmbeddingModel::voyage_code_4(1);
+    let model = EmbeddingModel::voyage_code_4(1, "my-app/chunk-v1");
     let mut cache = EmbeddingCache::open(&root.0, &model).unwrap();
     cache
         .put(&[(hash(2), &[2.0]), (hash(1), &[1.0]), (hash(2), &[3.0])])

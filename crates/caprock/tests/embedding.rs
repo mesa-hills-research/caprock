@@ -22,7 +22,7 @@ fn vector(i: u32, dim: usize) -> Vec<f32> {
 
 #[test]
 fn models() {
-    let m = EmbeddingModel::voyage_code_4(1024);
+    let m = EmbeddingModel::voyage_code_4(1024, "my-app/chunk-v1");
     assert_eq!(m.provider, "voyage");
     assert_eq!(m.model, "voyage-code-4");
     assert_eq!(m.dimensions, 1024);
@@ -31,7 +31,7 @@ fn models() {
     m.validate().unwrap();
     assert_eq!(
         m.document_fingerprint(),
-        "voyage-voyage-code-4-1024-float-document-arko_index_chunk-v1"
+        "voyage-voyage-code-4-1024-float-document-my-app_chunk-v1"
     );
     assert!(!m.requires_reembed(&m.clone()));
     let mut q = m.clone();
@@ -49,7 +49,7 @@ fn models() {
         Box::new(|x| x.dimensions = 512),
         Box::new(|x| x.document_input = None),
         Box::new(|x| x.output_dtype = "int8".into()),
-        Box::new(|x| x.text_format = "arko_index/chunk-v2".into()),
+        Box::new(|x| x.text_format = "my-app/chunk-v2".into()),
         Box::new(|x| x.revision = Some("2026-10".into())),
     ];
     for change in changes {
@@ -84,7 +84,7 @@ fn models() {
 #[test]
 fn cache_round_trips_across_reopen() {
     let root = TempDir::new("cache");
-    let model = EmbeddingModel::voyage_code_4(256);
+    let model = EmbeddingModel::voyage_code_4(256, "my-app/chunk-v1");
     let dim = 256;
     {
         let mut c = EmbeddingCache::open(root.path(), &model).unwrap();
@@ -138,7 +138,7 @@ fn cache_round_trips_across_reopen() {
 #[test]
 fn torn_tails_are_truncated_and_retain_compacts() {
     let root = TempDir::new("cache-torn");
-    let model = EmbeddingModel::voyage_code_4(512);
+    let model = EmbeddingModel::voyage_code_4(512, "my-app/chunk-v1");
     let dim = 512;
     {
         let mut c = EmbeddingCache::open(root.path(), &model).unwrap();
@@ -176,7 +176,7 @@ fn torn_tails_are_truncated_and_retain_compacts() {
 #[test]
 fn a_cache_directory_of_another_model_is_refused() {
     let root = TempDir::new("cache-model");
-    let model = EmbeddingModel::voyage_code_4(256);
+    let model = EmbeddingModel::voyage_code_4(256, "my-app/chunk-v1");
     let dir = root.path().join(model.document_fingerprint());
     std::fs::create_dir_all(&dir).unwrap();
     let mut other = model.clone();

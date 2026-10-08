@@ -248,7 +248,7 @@ fn refusals() {
 #[test]
 fn models_are_checked_on_open() {
     let dir = TempDir::new("w-model");
-    let model = EmbeddingModel::voyage_code_4(256);
+    let model = EmbeddingModel::voyage_code_4(256, "my-app/chunk-v1");
     let w = Writer::create(
         dir.path(),
         IndexConfig::for_model(model.clone()),
@@ -259,7 +259,7 @@ fn models_are_checked_on_open() {
     let mut query_only = model.clone();
     query_only.query_input = Some("search_query".into());
     drop(Writer::open_for_model(dir.path(), &query_only, options(100, 1)).unwrap());
-    let other = EmbeddingModel::voyage_code_4(1024);
+    let other = EmbeddingModel::voyage_code_4(1024, "my-app/chunk-v1");
     match Writer::open_for_model(dir.path(), &other, options(100, 1)) {
         Err(Error::ModelMismatch { stored, requested }) => {
             assert_eq!(*stored, model);

@@ -59,9 +59,10 @@ pub struct EmbeddingModel {
 }
 
 impl EmbeddingModel {
-    /// Voyage's `voyage-code-4` at `dimensions` (256, 512, 1024 or 2048), document and
-    /// query input types, float output, unit-length vectors, `arko_index/chunk-v1` text.
-    pub fn voyage_code_4(dimensions: u32) -> EmbeddingModel {
+    /// Voyage's `voyage-code-4` at `dimensions` (256, 512, 1024 or 2048), with document
+    /// and query input types, float output and unit-length vectors. `text_format` names
+    /// how the caller renders records into text, for example `my-app/chunk-v1`.
+    pub fn voyage_code_4(dimensions: u32, text_format: &str) -> EmbeddingModel {
         EmbeddingModel {
             provider: "voyage".into(),
             model: "voyage-code-4".into(),
@@ -70,7 +71,7 @@ impl EmbeddingModel {
             query_input: Some("query".into()),
             output_dtype: "float".into(),
             normalized: true,
-            text_format: "arko_index/chunk-v1".into(),
+            text_format: text_format.into(),
             revision: None,
         }
     }

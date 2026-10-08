@@ -903,7 +903,7 @@ fn errors_refusals() -> Outcome {
 
 fn model_mismatch() -> Outcome {
     let dir = Scratch::new("model");
-    let model = EmbeddingModel::voyage_code_4(256);
+    let model = EmbeddingModel::voyage_code_4(256, "my-app/chunk-v1");
     drop(
         Writer::create(
             dir.path(),
@@ -914,7 +914,11 @@ fn model_mismatch() -> Outcome {
     );
     Writer::open_for_model(dir.path(), &model, options(1))
         .map_err(|e| fail("open-error", e.to_string()))?;
-    match Writer::open_for_model(dir.path(), &EmbeddingModel::voyage_code_4(512), options(1)) {
+    match Writer::open_for_model(
+        dir.path(),
+        &EmbeddingModel::voyage_code_4(512, "my-app/chunk-v1"),
+        options(1),
+    ) {
         Err(Error::ModelMismatch { .. }) => Ok("mismatch refused".into()),
         Err(e) => Err(fail("wrong-error", e.to_string())),
         Ok(_) => Err(fail(
@@ -926,7 +930,7 @@ fn model_mismatch() -> Outcome {
 
 fn cache_roundtrip() -> Outcome {
     let root = Scratch::new("cache");
-    let model = EmbeddingModel::voyage_code_4(256);
+    let model = EmbeddingModel::voyage_code_4(256, "my-app/chunk-v1");
     let h = |i: u32| -> ContentHash {
         let mut x = [7u8; 32];
         x[..4].copy_from_slice(&i.to_le_bytes());
