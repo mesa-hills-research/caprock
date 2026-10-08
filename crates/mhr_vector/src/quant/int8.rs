@@ -176,20 +176,21 @@ impl Codec for Int8Codec {
             "int8 query dimension mismatch"
         );
         assert_eq!(code.len(), self.code_len(), "int8 code length mismatch");
-        match self.metric {
-            Metric::Cosine | Metric::Dot => {
-                query.constant + sum_terms(self.dim, |i| query.values[i] * code[i] as f32)
-            }
-            Metric::L2 => {
-                let steps = &self.params[self.dim..];
-                // Compute squared differences, not q^2 + x^2 - 2*q*x, to avoid
-                // cancellation when the two vectors are very close.
-                -sum_terms(self.dim, |i| {
-                    let delta = query.values[i] - steps[i] * code[i] as f32;
-                    delta * delta
-                })
-            }
+        let steps = &self.params[self.dim..];
+        #[cfg(target_arch = "x86_64")]
+        if let Some(simd) = crate::quant::x86_v3() {
+            return pulp::Simd::vectorize(
+                simd,
+                avx2::QueryCode {
+                    simd,
+                    metric: self.metric,
+                    query,
+                    steps,
+                    code,
+                },
+            );
         }
+        portable_query(self.metric, query, steps, code)
     }
 
     fn score_codes(&self, a: &[u8], b: &[u8]) -> f32 {
@@ -270,6 +271,23 @@ fn code_pair(metric: Metric, minima: &[f32], steps: &[f32], a: &[u8], b: &[u8]) 
     match metric {
         Metric::Cosine | Metric::Dot => portable_dot(minima, steps, a, b),
         Metric::L2 => -portable_l2(steps, a, b),
+    }
+}
+
+/// The estimated score of a code for a prepared query, with [`sum_terms`]'s lanes and
+/// reduction.
+fn portable_query(metric: Metric, query: &Int8Query, steps: &[f32], code: &[u8]) -> f32 {
+    let dim = code.len();
+    match metric {
+        Metric::Cosine | Metric::Dot => {
+            query.constant + sum_terms(dim, |i| query.values[i] * code[i] as f32)
+        }
+        // Compute squared differences, not q^2 + x^2 - 2*q*x, to avoid cancellation
+        // when the two vectors are very close.
+        Metric::L2 => -sum_terms(dim, |i| {
+            let delta = query.values[i] - steps[i] * code[i] as f32;
+            delta * delta
+        }),
     }
 }
 
@@ -360,6 +378,66 @@ mod avx2 {
             match self.metric {
                 Metric::Cosine | Metric::Dot => dot(self.simd, self.minima, self.steps, self.a, self.b),
                 Metric::L2 => -l2(self.simd, self.steps, self.a, self.b),
+            }
+        }
+    }
+
+    /// A prepared query against one code ([`super::portable_query`]).
+    pub(super) struct QueryCode<'a> {
+        pub simd: V3,
+        pub metric: Metric,
+        pub query: &'a super::Int8Query,
+        pub steps: &'a [f32],
+        pub code: &'a [u8],
+    }
+
+    impl pulp::WithSimd for QueryCode<'_> {
+        type Output = f32;
+
+        #[inline(always)]
+        fn with_simd<S: pulp::Simd>(self, _: S) -> f32 {
+            let (simd, avx) = (self.simd, self.simd.avx);
+            let (values, values_tail) = self.query.values.as_chunks::<16>();
+            let (steps, steps_tail) = self.steps.as_chunks::<16>();
+            let (code, code_tail) = self.code.as_chunks::<16>();
+            let mut low = avx._mm256_setzero_ps();
+            let mut high = avx._mm256_setzero_ps();
+            match self.metric {
+                Metric::Cosine | Metric::Dot => {
+                    for (values, code) in values.iter().zip(code) {
+                        let (v_low, v_high) = halves(values);
+                        let (c_low, c_high) = widen(simd, code);
+                        let term = |v, c| avx._mm256_mul_ps(v, avx._mm256_cvtepi32_ps(c));
+                        low = avx._mm256_add_ps(low, term(v_low, c_low));
+                        high = avx._mm256_add_ps(high, term(v_high, c_high));
+                    }
+                    let mut lanes = lanes(low, high);
+                    for (lane, (&v, &c)) in lanes.iter_mut().zip(values_tail.iter().zip(code_tail)) {
+                        *lane += v * c as f32;
+                    }
+                    self.query.constant + super::reduce(lanes)
+                }
+                Metric::L2 => {
+                    for ((values, steps), code) in values.iter().zip(steps).zip(code) {
+                        let (v_low, v_high) = halves(values);
+                        let (step_low, step_high) = halves(steps);
+                        let (c_low, c_high) = widen(simd, code);
+                        let term = |v, step, c| {
+                            let x = avx._mm256_mul_ps(step, avx._mm256_cvtepi32_ps(c));
+                            let delta = avx._mm256_sub_ps(v, x);
+                            avx._mm256_mul_ps(delta, delta)
+                        };
+                        low = avx._mm256_add_ps(low, term(v_low, step_low, c_low));
+                        high = avx._mm256_add_ps(high, term(v_high, step_high, c_high));
+                    }
+                    let mut lanes = lanes(low, high);
+                    let tail = values_tail.iter().zip(steps_tail).zip(code_tail);
+                    for (lane, ((&v, &step), &c)) in lanes.iter_mut().zip(tail) {
+                        let delta = v - step * c as f32;
+                        *lane += delta * delta;
+                    }
+                    -super::reduce(lanes)
+                }
             }
         }
     }
@@ -604,6 +682,23 @@ mod tests {
                         };
                         assert_eq!(portable.to_bits(), expected, "{metric:?} {dim}");
                     }
+                    // A query against each code: the dispatched kernel, the portable
+                    // one and the formula agree.
+                    let vector: Vec<f32> = (0..dim)
+                        .map(|_| (rng.below(4001) as f32 - 2000.0) / 1013.0)
+                        .collect();
+                    let query = codec.prepare(&vector);
+                    let b = code(i);
+                    let expected = match metric {
+                        Metric::L2 => -sum_terms(dim, |d| {
+                            let delta = query.values[d] - steps[d] * b[d] as f32;
+                            delta * delta
+                        }),
+                        _ => query.constant + sum_terms(dim, |d| query.values[d] * b[d] as f32),
+                    };
+                    assert_eq!(codec.score(&query, b).to_bits(), expected.to_bits());
+                    let portable = portable_query(metric, &query, steps, b);
+                    assert_eq!(portable.to_bits(), expected.to_bits(), "{metric:?} {dim}");
                 }
             }
         }
