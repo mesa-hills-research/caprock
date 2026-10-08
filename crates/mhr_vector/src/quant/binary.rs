@@ -256,6 +256,20 @@ impl Codec for BinaryCodec {
     }
 
     fn score_many(&self, query: &BinaryQuery, codes: &[u8], ids: &[u32], scores: &mut Vec<f32>) {
+        #[cfg(target_arch = "x86_64")]
+        if let Some(simd) = crate::quant::x86_v3() {
+            return pulp::Simd::vectorize(
+                simd,
+                avx2::QueryCodes {
+                    simd,
+                    codec: self,
+                    query,
+                    codes,
+                    ids,
+                    scores,
+                },
+            );
+        }
         let len = self.code_len();
         let code = |id: u32| {
             let start = id as usize * len;
@@ -313,13 +327,23 @@ const SCORE_GROUP: usize = 8;
 /// any code's bits.
 #[inline(always)]
 fn projections<const N: usize>(values: &[f32], codes: [&[u8]; N]) -> [f32; N] {
-    let tables = values.as_chunks::<16>().0;
-    let (pairs, last) = tables.as_chunks::<2>();
-    let codes = codes.map(|code| &code[..tables.len().div_ceil(2)]);
+    resume_projections(values.as_chunks::<16>().0, codes, 0, [0.0; N])
+}
+
+/// [`projections`] from table `first` (even) on, continuing the sums `projections`
+/// of the tables before it.
+#[inline(always)]
+fn resume_projections<const N: usize>(
+    tables: &[[f32; 16]],
+    codes: [&[u8]; N],
+    first: usize,
+    mut projections: [f32; N],
+) -> [f32; N] {
+    let (pairs, last) = tables[first..].as_chunks::<2>();
+    let codes = codes.map(|code| &code[first / 2..tables.len().div_ceil(2)]);
     let paired = codes.map(|code| &code[..pairs.len()]);
     // Checked once here, so the loop indexes the codes without checks.
     assert!(paired.iter().all(|code| code.len() == pairs.len()));
-    let mut projections = [0.0f32; N];
     for (j, [low, high]) in pairs.iter().enumerate() {
         for (projection, code) in projections.iter_mut().zip(paired) {
             let byte = code[j];
@@ -333,6 +357,139 @@ fn projections<const N: usize>(values: &[f32], codes: [&[u8]; N]) -> [f32; N] {
         }
     }
     projections
+}
+
+/// [`BinaryCodec::score_many`] with eight codes in the eight lanes of an AVX2
+/// register: 32 bytes of each code are transposed so that lane `c` holds code `c`'s
+/// nibbles, and each nibble's table entry is looked up for all eight lanes at once. Each
+/// lane adds its own code's entries in increasing `j`, so the sums are
+/// [`projections`]' bits.
+#[cfg(target_arch = "x86_64")]
+mod avx2 {
+    use core::arch::x86_64::{__m256, __m256i};
+
+    use pulp::x86::V3;
+
+    use super::{BinaryCodec, BinaryQuery, SCORE_GROUP};
+    use crate::quant::Codec;
+
+    pub(super) struct QueryCodes<'a> {
+        pub simd: V3,
+        pub codec: &'a BinaryCodec,
+        pub query: &'a BinaryQuery,
+        pub codes: &'a [u8],
+        pub ids: &'a [u32],
+        pub scores: &'a mut Vec<f32>,
+    }
+
+    impl pulp::WithSimd for QueryCodes<'_> {
+        type Output = ();
+
+        #[inline(always)]
+        fn with_simd<S: pulp::Simd>(self, _: S) {
+            let (codec, query) = (self.codec, self.query);
+            let tables = query.values.as_chunks::<16>().0;
+            let len = codec.code_len();
+            let code = |id: u32| {
+                let start = id as usize * len;
+                &self.codes[start..start + len]
+            };
+            let (groups, rest) = self.ids.as_chunks::<SCORE_GROUP>();
+            for group in groups {
+                let codes = group.map(code);
+                let (sums, done) = projections(self.simd, tables, codes);
+                let projections = super::resume_projections(tables, codes, done, sums);
+                for (projection, code) in projections.into_iter().zip(codes) {
+                    self.scores.push(codec.estimate(query, projection, code));
+                }
+            }
+            for &id in rest {
+                let code = code(id);
+                let [projection] = super::projections(&query.values, [code]);
+                self.scores.push(codec.estimate(query, projection, code));
+            }
+        }
+    }
+
+    /// The projections of eight codes over the first `64 * n` tables (32 bytes of each
+    /// code per 64 tables), and that number of tables.
+    #[inline(always)]
+    fn projections(simd: V3, tables: &[[f32; 16]], codes: [&[u8]; 8]) -> ([f32; 8], usize) {
+        let chunks = tables.as_chunks::<64>().0;
+        let codes = codes.map(|code| &code.as_chunks::<32>().0[..chunks.len()]);
+        // Checked once here, so the loop indexes the codes without checks.
+        assert!(codes.iter().all(|code| code.len() == chunks.len()));
+        let mut sums = simd.avx._mm256_setzero_ps();
+        for (i, tables) in chunks.iter().enumerate() {
+            let rows = [0, 1, 2, 3, 4, 5, 6, 7].map(|c| pulp::cast(codes[c][i]));
+            // Column t holds bytes 4t..4t + 4 of the chunk, tables 8t..8t + 8.
+            for (column, tables) in transpose(simd, rows).into_iter().zip(tables.as_chunks::<8>().0) {
+                sums = lookup::<0, 28>(simd, sums, column, &tables[0]);
+                sums = lookup::<4, 24>(simd, sums, column, &tables[1]);
+                sums = lookup::<8, 20>(simd, sums, column, &tables[2]);
+                sums = lookup::<12, 16>(simd, sums, column, &tables[3]);
+                sums = lookup::<16, 12>(simd, sums, column, &tables[4]);
+                sums = lookup::<20, 8>(simd, sums, column, &tables[5]);
+                sums = lookup::<24, 4>(simd, sums, column, &tables[6]);
+                sums = lookup::<28, 0>(simd, sums, column, &tables[7]);
+            }
+        }
+        (pulp::cast(sums), chunks.len() * 64)
+    }
+
+    /// `sums` plus, in each lane, `table`'s entry for the nibble at bits
+    /// `RIGHT..RIGHT + 4` of the lane (`LEFT` = 28 - `RIGHT` moves its top bit to the
+    /// sign). The permutes use an index's low three bits, the sign bit picks the half.
+    #[inline(always)]
+    fn lookup<const RIGHT: i32, const LEFT: i32>(
+        simd: V3,
+        sums: __m256,
+        column: __m256i,
+        table: &[f32; 16],
+    ) -> __m256 {
+        let (avx, avx2) = (simd.avx, simd.avx2);
+        let [low, high]: [__m256; 2] = pulp::cast(*table);
+        let index = avx2._mm256_srli_epi32::<RIGHT>(column);
+        let upper = avx._mm256_castsi256_ps(avx2._mm256_slli_epi32::<LEFT>(column));
+        let low = avx2._mm256_permutevar8x32_ps(low, index);
+        let high = avx2._mm256_permutevar8x32_ps(high, index);
+        avx._mm256_add_ps(sums, avx._mm256_blendv_ps(low, high, upper))
+    }
+
+    /// Rows of eight 32-bit words to columns: word `t` of row `c` becomes lane `c` of
+    /// column `t`.
+    #[inline(always)]
+    fn transpose(simd: V3, rows: [__m256i; 8]) -> [__m256i; 8] {
+        let a = simd.avx2;
+        // Pairs of rows: words 0, 1 (low) and 2, 3 (high) of each 128-bit half.
+        let low01 = a._mm256_unpacklo_epi32(rows[0], rows[1]);
+        let high01 = a._mm256_unpackhi_epi32(rows[0], rows[1]);
+        let low23 = a._mm256_unpacklo_epi32(rows[2], rows[3]);
+        let high23 = a._mm256_unpackhi_epi32(rows[2], rows[3]);
+        let low45 = a._mm256_unpacklo_epi32(rows[4], rows[5]);
+        let high45 = a._mm256_unpackhi_epi32(rows[4], rows[5]);
+        let low67 = a._mm256_unpacklo_epi32(rows[6], rows[7]);
+        let high67 = a._mm256_unpackhi_epi32(rows[6], rows[7]);
+        // Words t and t + 4 of rows 0-3 (and of rows 4-7).
+        let w04 = a._mm256_unpacklo_epi64(low01, low23);
+        let w15 = a._mm256_unpackhi_epi64(low01, low23);
+        let w26 = a._mm256_unpacklo_epi64(high01, high23);
+        let w37 = a._mm256_unpackhi_epi64(high01, high23);
+        let x04 = a._mm256_unpacklo_epi64(low45, low67);
+        let x15 = a._mm256_unpackhi_epi64(low45, low67);
+        let x26 = a._mm256_unpacklo_epi64(high45, high67);
+        let x37 = a._mm256_unpackhi_epi64(high45, high67);
+        [
+            a._mm256_permute2x128_si256::<0x20>(w04, x04),
+            a._mm256_permute2x128_si256::<0x20>(w15, x15),
+            a._mm256_permute2x128_si256::<0x20>(w26, x26),
+            a._mm256_permute2x128_si256::<0x20>(w37, x37),
+            a._mm256_permute2x128_si256::<0x31>(w04, x04),
+            a._mm256_permute2x128_si256::<0x31>(w15, x15),
+            a._mm256_permute2x128_si256::<0x31>(w26, x26),
+            a._mm256_permute2x128_si256::<0x31>(w37, x37),
+        ]
+    }
 }
 
 /// The Hamming distance of two codes' first `dim` sign bits (whole words; padding
@@ -464,7 +621,7 @@ mod tests {
         };
         let mut rng = crate::util::SplitMix64::new(5);
         let mut value = || (rng.below(2001) as f32 - 1000.0) / 300.0;
-        for dim in [1, 2, 3, 4, 5, 7, 8, 9, 63, 64, 65, 127, 128, 129, 1024, 1027] {
+        for dim in [1, 2, 3, 4, 5, 7, 8, 9, 63, 64, 65, 127, 128, 129, 255, 256, 257, 300, 511, 1024, 1027] {
             let n = 21;
             let sample: Vec<f32> = (0..n * dim).map(|_| value()).collect();
             let query: Vec<f32> = (0..dim).map(|_| value()).collect();
