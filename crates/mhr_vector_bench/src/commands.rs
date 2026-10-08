@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Instant;
@@ -14,7 +14,7 @@ use mhr_vector_oracle::rng::Rng;
 use serde_json::{Value, json};
 
 use crate::args::Args;
-use crate::configs::{BEAMS, BuildOptions, ConfigRef, ConfigSpec, Part, Workload, datasets_root};
+use crate::configs::{BuildOptions, ConfigRef, ConfigSpec, Part, Workload, datasets_root};
 use crate::data::{Judge, Slice, named_filter};
 use crate::engine::{self, EngineKind, Rec, Searcher};
 use crate::measure::{self, median, quantile, secs};
@@ -238,10 +238,9 @@ pub fn build(a: &Args) -> R<Value> {
     }))
 }
 
-/// One measured beam: recall (all queries) and speed.
+/// Recall over all queries at one beam, and the rules any result broke.
 #[derive(Debug, Clone)]
 struct BeamResult {
-    beam: Option<u32>,
     recall: f64,
     violations: usize,
     first_violation: Option<String>,
@@ -293,7 +292,6 @@ fn recall_pass(
         }
     }
     Ok(BeamResult {
-        beam,
         recall: recalls.iter().sum::<f64>() / recalls.len().max(1) as f64,
         violations,
         first_violation: first,
@@ -445,7 +443,6 @@ pub fn query(a: &Args) -> R<Value> {
             .get("filters")
             .map(|f| f.split(',').map(str::to_string).collect())
             .unwrap_or_default(),
-        recall_target: 0.95,
         updates: false,
         open: false,
     };
@@ -776,201 +773,6 @@ pub fn run(a: &Args) -> R<Value> {
     std::fs::write(out.join("results.md"), crate::report::markdown(&report))
         .map_err(|e| e.to_string())?;
     Ok(json!({"results": out.join("results.json"), "markdown": out.join("results.md")}))
-}
-
-fn part_dir(index_root: &Path, i: usize, part: &Part) -> R<PathBuf> {
-    Ok(index_root.join(format!(
-        "part{i}-{}-{}",
-        part.dataset,
-        part.config.resolve()?.name
-    )))
-}
-
-/// `prepare`: ground truth and index builds of a workload's parts (for `score`).
-pub fn prepare(a: &Args) -> R<Value> {
-    let path = PathBuf::from(a.required("workload")?);
-    let w = Workload::load(&path)?;
-    let index_root = PathBuf::from(a.required("index-root")?);
-    let root = datasets_root(a.get("datasets"));
-    let mut builds = Vec::new();
-    for (i, part) in w.parts.iter().enumerate() {
-        let slice = Slice::open(&root, &part.dataset, part.base, part.queries)?;
-        slice.ground_truth(
-            "none",
-            &Filter::all(),
-            slice.base,
-            &HashSet::new(),
-            GT_K,
-            w.recall_threads.max(8),
-        )?;
-        let dir = part_dir(&index_root, i, part)?;
-        let mut args = vec![
-            "build".to_string(),
-            "--index".into(),
-            dir.display().to_string(),
-        ];
-        args.extend(common_child_args(a, part, &w)?);
-        builds.push(child(&args)?);
-    }
-    let marker =
-        json!({"workload": w.name, "fingerprint": Workload::fingerprint(&path)?, "builds": builds});
-    std::fs::write(
-        index_root.join("prepared.json"),
-        serde_json::to_string_pretty(&marker).unwrap(),
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(marker)
-}
-
-/// `score`: the speed gate's number (docs/development/swarm-pack.md, "The score"). Prints
-/// `{"primary", "components", "detail"}`; `primary` is 0 when a part cannot reach its
-/// recall target or any result breaks a rule.
-pub fn score(a: &Args) -> R<Value> {
-    let path = PathBuf::from(a.required("workload")?);
-    let w = Workload::load(&path)?;
-    let index_root = PathBuf::from(a.required("index-root")?);
-    let marker: Value = serde_json::from_str(
-        &std::fs::read_to_string(index_root.join("prepared.json"))
-            .map_err(|e| format!("not prepared: {e}"))?,
-    )
-    .map_err(|e| e.to_string())?;
-    if marker["fingerprint"] != json!(Workload::fingerprint(&path)?) {
-        return Err("the index root was prepared for another workload; run prepare".into());
-    }
-    let root = datasets_root(a.get("datasets"));
-    let mut components = serde_json::Map::new();
-    let mut detail = Vec::new();
-    let mut log_sum = 0.0;
-    let mut failed = false;
-    for (i, part) in w.parts.iter().enumerate() {
-        let slice = Slice::open(&root, &part.dataset, part.base, part.queries)?;
-        let searcher = engine::open_reader(
-            engine_kind(a)?,
-            &part_dir(&index_root, i, part)?,
-            StoreOptions::default(),
-        )?;
-        let judge = judge_for(&slice, "none", w.recall_threads)?;
-        let tag = format!("p{i}");
-        let default = recall_pass(&searcher, &judge, part.k, None, w.recall_threads)?;
-        components.insert(format!("{tag}.recall_default"), json!(default.recall));
-        let mut chosen: Option<BeamResult> = None;
-        for &beam in BEAMS.iter().filter(|&&b| b as usize >= part.k) {
-            let r = recall_pass(&searcher, &judge, part.k, Some(beam), w.recall_threads)?;
-            if r.violations > 0 {
-                chosen = Some(r);
-                break;
-            }
-            if r.recall >= part.recall_target {
-                chosen = Some(r);
-                break;
-            }
-        }
-        let violations = default.violations + chosen.as_ref().map_or(0, |c| c.violations);
-        components.insert(format!("{tag}.violations"), json!(violations));
-        if violations > 0 {
-            failed = true;
-            detail.push(format!(
-                "{}: rule broken: {}",
-                part.dataset,
-                default
-                    .first_violation
-                    .clone()
-                    .or(chosen.and_then(|c| c.first_violation))
-                    .unwrap_or_default()
-            ));
-            continue;
-        }
-        let Some(chosen) = chosen else {
-            failed = true;
-            detail.push(format!(
-                "{}: no beam up to {} reaches recall {}",
-                part.dataset,
-                BEAMS[BEAMS.len() - 1],
-                part.recall_target
-            ));
-            continue;
-        };
-        let (qps, p50, p99) = timed_pass(
-            &searcher,
-            &slice.queries,
-            part.k,
-            None,
-            chosen.beam,
-            w.timed_repeats,
-        )?;
-        components.insert(format!("{tag}.qps"), json!(qps));
-        components.insert(format!("{tag}.beam"), json!(chosen.beam));
-        components.insert(format!("{tag}.recall"), json!(chosen.recall));
-        components.insert(format!("{tag}.p50_ms"), json!(p50));
-        components.insert(format!("{tag}.p99_ms"), json!(p99));
-        log_sum += qps.ln();
-        detail.push(format!(
-            "{} k={}: {:.0} QPS at beam {} (recall {:.4}; default recall {:.4}); p50 {:.3} ms, p99 {:.3} ms",
-            part.dataset, part.k, qps, chosen.beam.unwrap_or(0), chosen.recall, default.recall, p50, p99
-        ));
-    }
-    let primary = if failed {
-        0.0
-    } else {
-        (log_sum / w.parts.len().max(1) as f64).exp()
-    };
-    Ok(json!({"primary": primary, "components": components, "detail": detail.join("; ")}))
-}
-
-/// `build-score`: the build phase's number: builds every part (a child process each,
-/// as `prepare` does) and reports `primary` = the geometric mean of vectors per
-/// second, with each part's build seconds, peak memory and default-beam recall as
-/// components. `primary` is 0 when any recall falls below the part's target.
-pub fn build_score(a: &Args) -> R<Value> {
-    let path = PathBuf::from(a.required("workload")?);
-    let w = Workload::load(&path)?;
-    let index_root = PathBuf::from(a.required("index-root")?);
-    let root = datasets_root(a.get("datasets"));
-    let mut components = serde_json::Map::new();
-    let mut detail = Vec::new();
-    let mut log_sum = 0.0;
-    let mut failed = false;
-    for (i, part) in w.parts.iter().enumerate() {
-        let slice = Slice::open(&root, &part.dataset, part.base, part.queries)?;
-        let dir = part_dir(&index_root, i, part)?;
-        let mut args = vec![
-            "build".to_string(),
-            "--index".into(),
-            dir.display().to_string(),
-        ];
-        args.extend(common_child_args(a, part, &w)?);
-        let built = child(&args)?;
-        let rate = built["vectors_per_second"].as_f64().unwrap_or(0.0);
-        let searcher = engine::open_reader(engine_kind(a)?, &dir, StoreOptions::default())?;
-        let judge = judge_for(&slice, "none", w.recall_threads)?;
-        let r = recall_pass(&searcher, &judge, part.k, None, w.recall_threads)?;
-        let tag = format!("p{i}");
-        components.insert(format!("{tag}.vectors_per_second"), json!(rate));
-        components.insert(
-            format!("{tag}.build_seconds"),
-            built["build_seconds"].clone(),
-        );
-        components.insert(format!("{tag}.peak_rss"), built["peak_rss"].clone());
-        components.insert(format!("{tag}.recall_default"), json!(r.recall));
-        components.insert(format!("{tag}.violations"), json!(r.violations));
-        if r.violations > 0 || r.recall < part.recall_target {
-            failed = true;
-        }
-        log_sum += rate.max(1e-9).ln();
-        detail.push(format!(
-            "{}: {:.0} vectors/s ({:.1} s), default recall {:.4}",
-            part.dataset,
-            rate,
-            built["build_seconds"].as_f64().unwrap_or(0.0),
-            r.recall
-        ));
-    }
-    let primary = if failed {
-        0.0
-    } else {
-        (log_sum / w.parts.len().max(1) as f64).exp()
-    };
-    Ok(json!({"primary": primary, "components": components, "detail": detail.join("; ")}))
 }
 
 /// `datasets`: what is under the datasets root.

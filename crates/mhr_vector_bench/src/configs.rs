@@ -1,4 +1,4 @@
-//! Benchmark configurations, suites and workloads (the JSON files in `workloads/`).
+//! Benchmark configurations and suites (the JSON files in `workloads/`).
 
 use std::path::{Path, PathBuf};
 
@@ -138,7 +138,7 @@ impl ConfigRef {
     }
 }
 
-/// Build options shared by suites and workloads.
+/// How a suite builds its indexes.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BuildOptions {
@@ -195,7 +195,7 @@ impl BuildOptions {
     }
 }
 
-/// One measured part of a workload or suite: a dataset slice and a configuration.
+/// One measured part of a suite: a dataset slice and a configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Part {
@@ -213,9 +213,6 @@ pub struct Part {
     /// Filters to measure besides "none" (names from the standard set).
     #[serde(default)]
     pub filters: Vec<String>,
-    /// Recall threshold of the score (QPS at the smallest beam reaching it).
-    #[serde(default = "default_target")]
-    pub recall_target: f64,
     /// Measure updates (inserts, deletes, recall afterwards).
     #[serde(default)]
     pub updates: bool,
@@ -230,17 +227,8 @@ fn default_queries() -> usize {
 fn default_k() -> usize {
     10
 }
-fn default_target() -> f64 {
-    0.95
-}
 
-/// The beam ladder searched for the score's operating point.
-pub const BEAMS: [u32; 38] = [
-    10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 36, 40, 44, 48, 52, 56, 60, 64, 72, 80, 88, 96,
-    104, 112, 128, 144, 160, 176, 192, 224, 256, 288, 320, 384, 448, 512,
-];
-
-/// A workload (the speed gate's, or a suite): parts and how to run them.
+/// A suite: parts and how to run them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Workload {
@@ -256,10 +244,10 @@ pub struct Workload {
     /// Threads of the untimed recall passes.
     #[serde(default = "default_recall_threads")]
     pub recall_threads: usize,
-    /// Thread counts of the QPS measurements (1 is the score's).
+    /// Thread counts of the QPS measurements.
     #[serde(default = "default_qps_threads")]
     pub qps_threads: Vec<usize>,
-    /// Beams to report in suites (the score always searches `BEAMS`).
+    /// Beams to measure besides the default.
     #[serde(default)]
     pub beams: Vec<u32>,
 }
@@ -283,17 +271,6 @@ impl Workload {
             p.config.resolve()?;
         }
         Ok(w)
-    }
-
-    /// A stable identity of the workload file (for caches): its bytes' FNV-1a hash.
-    pub fn fingerprint(path: &Path) -> Result<String, String> {
-        let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let mut h = 0xcbf2_9ce4_8422_2325u64;
-        for b in bytes {
-            h ^= b as u64;
-            h = h.wrapping_mul(0x0000_0100_0000_01b3);
-        }
-        Ok(format!("{h:016x}"))
     }
 }
 

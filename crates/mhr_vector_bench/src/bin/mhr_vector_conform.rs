@@ -1,4 +1,4 @@
-//! `mhr_vector_conform`: the conformance runner (the swarm's oracle).
+//! `mhr_vector_conform`: runs the conformance checks, each in its own process.
 //!
 //! ```text
 //! mhr_vector_conform list
@@ -9,12 +9,12 @@
 //! `run` starts one child process per check (a crash or hang is pinned on its check),
 //! `--jobs` at a time, and prints one JSON line per check:
 //! `{"check", "status": pass|fail|panic|timeout|error, "signature", "detail", "seconds"}`,
-//! then a summary line. The signature is what the swarm buckets by:
-//! - fail: `<check id>: <failure kind>` (kinds are stable: `recall-below`,
-//!   `exact-mismatch`, `too-few`, `live-count`, `bytes-differ`, ...);
-//! - panic: `todo: <unit>` for an unimplemented stub (`todo!("U07 ...")`), otherwise
-//!   `panic: <file>: <message up to its first digit>`;
-//! - timeout: `timeout: <check id>`.
+//! then a summary line. The signature names a failure in a stable form, so repeats of one
+//! failure group together:
+//! - fail: `<check id>: <failure kind>` (`recall-below`, `exact-mismatch`, `too-few`,
+//!   `live-count`, `bytes-differ`, ...)
+//! - panic: `panic: <file>: <message up to its first digit>`
+//! - timeout: `timeout: <check id>`
 //!
 //! Exit status: 0 when every selected check passed, 1 otherwise.
 
@@ -30,12 +30,6 @@ use serde_json::{Value, json};
 static PANIC: Mutex<Option<(String, String)>> = Mutex::new(None);
 
 fn panic_signature(message: &str, file: &str) -> String {
-    if let Some(rest) = message.strip_prefix("not yet implemented: ")
-        && let Some(unit) = rest.split_whitespace().next()
-        && unit.starts_with('U')
-    {
-        return format!("todo: {unit}");
-    }
     let stem: String = message
         .chars()
         .take_while(|c| !c.is_ascii_digit())

@@ -1,4 +1,4 @@
-//! `mhr_vector_bench`: datasets, ground truth, measurements and the speed score.
+//! `mhr_vector_bench`: datasets, ground truth and measurements.
 
 use mhr_vector_bench::args::Args;
 use mhr_vector_bench::commands;
@@ -18,9 +18,6 @@ usage: mhr_vector_bench <command> [options]   (JSON on stdout)
   open      --dataset NAME --index DIR [--drop-caches]  open in this process, one query
   update    --dataset NAME --index DIR --rows N [...]  insert rows N.., delete 10%, recall
   run       --suite FILE --out DIR [--work DIR --keep]  a whole suite: results.json + results.md
-  prepare   --workload FILE --index-root DIR            ground truth + builds for `score`
-  score     --workload FILE --index-root DIR            {\"primary\", \"components\", \"detail\"}
-  build-score --workload FILE --index-root DIR          the build phase's number (vectors/s)
 
 Filters (--filters, workload \"filters\"): the standard set (none, p50, p10, p01, p001, go,
 p10-python, p01-or-p001, p50-d7, nothing), or path:<prefix>, or lang:<language>.
@@ -49,9 +46,6 @@ fn main() {
         "open" => commands::open(&args),
         "update" => commands::update(&args),
         "run" => commands::run(&args),
-        "prepare" => commands::prepare(&args),
-        "score" => commands::score(&args),
-        "build-score" => commands::build_score(&args),
         "-h" | "--help" | "help" => {
             println!("{USAGE}");
             return;

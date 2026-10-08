@@ -1,9 +1,9 @@
-//! The conformance checks: every behaviour docs/requirements.md promises, checked against the
-//! oracle through the public API. `mhr_vector_conform` runs each in its own process.
+//! The conformance checks: the documented behaviour (docs/reference.md), checked through
+//! the public API against the reference implementation in `mhr_vector_oracle`.
+//! `mhr_vector_conform` runs each in its own process.
 //!
-//! A failure has a stable `kind` (the first word of its bucket signature); the check id
-//! and the kind together form the signature the swarm buckets by. Details carry the
-//! seed and step to replay (`mhr_vector_conform one <id>`).
+//! A failure has a stable `kind`, and the check id and the kind together form its
+//! signature. Details carry the seed and step to replay (`mhr_vector_conform one <id>`).
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
