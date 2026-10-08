@@ -25,6 +25,22 @@ use crate::util::SplitMix64;
 /// Most vectors a codec trains on.
 pub const MAX_TRAINING_VECTORS: usize = 65_536;
 
+/// Runs a kernel compiled for the best instruction set this CPU offers (AVX2 on
+/// x86-64, NEON on aarch64), detected once. Kernels keep their scalar operation
+/// order lane for lane and Rust never fuses a multiply and an add, so every
+/// instruction set gives the same bits.
+pub(crate) fn dispatch<Op: pulp::WithSimd>(kernel: Op) -> Op::Output {
+    static ARCH: std::sync::OnceLock<pulp::Arch> = std::sync::OnceLock::new();
+    ARCH.get_or_init(pulp::Arch::new).dispatch(kernel)
+}
+
+/// AVX2 (with FMA, which no kernel uses), when this CPU has it; detected once.
+#[cfg(target_arch = "x86_64")]
+pub(crate) fn x86_v3() -> Option<pulp::x86::V3> {
+    static V3: std::sync::OnceLock<Option<pulp::x86::V3>> = std::sync::OnceLock::new();
+    *V3.get_or_init(pulp::x86::V3::try_new)
+}
+
 /// A segment's code format.
 pub trait Codec: Send + Sync {
     /// A query prepared for scoring codes (quantized, rotated, tables, ...).
@@ -43,6 +59,15 @@ pub trait Codec: Send + Sync {
     fn score(&self, query: &Self::Query, code: &[u8]) -> f32;
     /// The estimated score between two codes (graph construction).
     fn score_codes(&self, a: &[u8], b: &[u8]) -> f32;
+    /// Appends `score_codes(a, code)` for the code of each id in `ids`, bit for bit;
+    /// `codes` holds `code_len()` bytes per id. Codecs may prepare `a` once.
+    fn score_codes_many(&self, a: &[u8], codes: &[u8], ids: &[u32], scores: &mut Vec<f32>) {
+        let len = self.code_len();
+        scores.extend(ids.iter().map(|&id| {
+            let start = id as usize * len;
+            self.score_codes(a, &codes[start..start + len])
+        }));
+    }
     /// The codec's parameters, as saved in a segment.
     fn to_bytes(&self) -> Vec<u8>;
 }
@@ -102,6 +127,20 @@ impl Codec for F32Codec {
 
     fn score_codes(&self, a: &[u8], b: &[u8]) -> f32 {
         distance::score(self.metric, &self.decode(a), &self.decode(b))
+    }
+
+    fn score_codes_many(&self, a: &[u8], codes: &[u8], ids: &[u32], scores: &mut Vec<f32>) {
+        let a = self.decode(a);
+        let mut b = vec![0.0; self.dim];
+        let len = self.code_len();
+        for &id in ids {
+            let start = id as usize * len;
+            let code = &codes[start..start + len];
+            for (value, bytes) in b.iter_mut().zip(code.as_chunks::<4>().0) {
+                *value = f32::from_le_bytes(*bytes);
+            }
+            scores.push(distance::score(self.metric, &a, &b));
+        }
     }
 
     /// Empty: the metric and dimension come from the index configuration.
@@ -264,6 +303,45 @@ mod tests {
                 AnyCodec::train(CodeKind::F32, Metric::Dot, dim, &sample, 0),
                 Err(Error::InvalidArgument(_))
             ));
+        }
+    }
+
+    #[test]
+    fn batched_code_scores_equal_pairwise_scores() {
+        let mut rng = SplitMix64::new(3);
+        for metric in [Metric::Cosine, Metric::Dot, Metric::L2] {
+            for dim in [1, 7, 16, 33, 64, 65, 130] {
+                let n = 20;
+                let mut vectors: Vec<f32> = (0..n * dim)
+                    .map(|_| (rng.below(2001) as f32 - 1000.0) / 250.0)
+                    .collect();
+                if metric == Metric::Cosine {
+                    for v in vectors.chunks_exact_mut(dim) {
+                        let norm = distance::dot(v, v).sqrt();
+                        v.iter_mut().for_each(|x| *x /= norm);
+                    }
+                }
+                for kind in [CodeKind::F32, CodeKind::Int8, CodeKind::Binary] {
+                    let codec = AnyCodec::train(kind, metric, dim, &vectors, 0).unwrap();
+                    let len = codec.code_len();
+                    let mut codes = vec![0; n * len];
+                    for (v, code) in vectors.chunks_exact(dim).zip(codes.chunks_exact_mut(len)) {
+                        codec.encode(v, code);
+                    }
+                    let ids: Vec<u32> = (0..n as u32).rev().collect();
+                    with_codec!(&codec, c => {
+                        for a in codes.chunks_exact(len) {
+                            let mut many = vec![f32::NAN];
+                            c.score_codes_many(a, &codes, &ids, &mut many);
+                            assert!(many[0].is_nan(), "appends");
+                            for (&id, score) in ids.iter().zip(&many[1..]) {
+                                let b = &codes[id as usize * len..(id as usize + 1) * len];
+                                assert_eq!(score.to_bits(), c.score_codes(a, b).to_bits());
+                            }
+                        }
+                    });
+                }
+            }
         }
     }
 

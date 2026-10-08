@@ -4,7 +4,8 @@
 //! with 256 unsigned byte values. Codes contain exactly one byte per dimension.
 //! Queries are not quantized: dot/cosine queries fold the affine decoder into their
 //! weights, while L2 queries subtract the decoder's offset. Graph construction uses
-//! symmetric scores between decoded codes. All kernels are allocation-free.
+//! symmetric scores between decoded codes. The per-code kernels are allocation-free;
+//! batch scoring decodes the shared code once.
 
 use crate::config::{CodeKind, Metric};
 use crate::error::{Error, Result, VectorError};
@@ -195,19 +196,34 @@ impl Codec for Int8Codec {
         assert_eq!(a.len(), self.code_len(), "int8 code length mismatch");
         assert_eq!(b.len(), self.code_len(), "int8 code length mismatch");
         let (minima, steps) = self.params.split_at(self.dim);
-        match self.metric {
-            Metric::Cosine | Metric::Dot => sum_terms(self.dim, |i| {
-                let x = minima[i] + steps[i] * a[i] as f32;
-                let y = minima[i] + steps[i] * b[i] as f32;
-                x * y
-            }),
-            Metric::L2 => -sum_terms(self.dim, |i| {
-                // Offsets cancel. Subtract bytes before scaling to preserve small
-                // distances even when the offset is much larger than the step.
-                let delta = (a[i] as f32 - b[i] as f32) * steps[i];
-                delta * delta
-            }),
+        code_pair(self.metric, minima, &steps[..self.dim], a, b)
+    }
+
+    fn score_codes_many(&self, a: &[u8], codes: &[u8], ids: &[u32], scores: &mut Vec<f32>) {
+        assert_eq!(a.len(), self.code_len(), "int8 code length mismatch");
+        let (minima, steps) = self.params.split_at(self.dim);
+        let steps = &steps[..self.dim];
+        #[cfg(target_arch = "x86_64")]
+        if let Some(simd) = crate::quant::x86_v3() {
+            return pulp::Simd::vectorize(
+                simd,
+                avx2::CodesMany {
+                    simd,
+                    metric: self.metric,
+                    minima,
+                    steps,
+                    a,
+                    codes,
+                    ids,
+                    scores,
+                },
+            );
         }
+        let len = self.code_len();
+        scores.extend(ids.iter().map(|&id| {
+            let start = id as usize * len;
+            code_pair(self.metric, minima, steps, a, &codes[start..start + len])
+        }));
     }
 
     fn to_bytes(&self) -> Vec<u8> {
@@ -230,6 +246,293 @@ fn metric_tag(metric: Metric) -> u32 {
     }
 }
 
+/// The symmetric score of two codes, with [`sum_terms`]'s lanes and reduction:
+/// dot/cosine `sum((min + step * a) * (min + step * b))`, L2 the negated sum of
+/// `((a - b) * step)^2` (offsets cancel; subtracting bytes before scaling preserves
+/// small distances even when the offset is much larger than the step). Element `i`
+/// goes to lane `i % 16`, and each lane adds its terms in increasing `i`, so the
+/// portable and the AVX2 kernels give the same bits.
+fn code_pair(metric: Metric, minima: &[f32], steps: &[f32], a: &[u8], b: &[u8]) -> f32 {
+    #[cfg(target_arch = "x86_64")]
+    if let Some(simd) = crate::quant::x86_v3() {
+        return pulp::Simd::vectorize(
+            simd,
+            avx2::CodePair {
+                simd,
+                metric,
+                minima,
+                steps,
+                a,
+                b,
+            },
+        );
+    }
+    match metric {
+        Metric::Cosine | Metric::Dot => portable_dot(minima, steps, a, b),
+        Metric::L2 => -portable_l2(steps, a, b),
+    }
+}
+
+// Two 8-lane halves vectorize well with or without wide registers.
+fn portable_dot(minima: &[f32], steps: &[f32], a: &[u8], b: &[u8]) -> f32 {
+    let mut halves = [[0.0f32; 8]; 2];
+    let (minima, minima_tail) = minima.as_chunks::<16>();
+    let (steps, steps_tail) = steps.as_chunks::<16>();
+    let (a, a_tail) = a.as_chunks::<16>();
+    let (b, b_tail) = b.as_chunks::<16>();
+    let term = |min: f32, step: f32, a: u8, b: u8| {
+        let x = min + step * a as f32;
+        let y = min + step * b as f32;
+        x * y
+    };
+    for (((minima, steps), a), b) in minima.iter().zip(steps).zip(a).zip(b) {
+        for (half, lanes) in halves.iter_mut().enumerate() {
+            let mut terms = [0.0f32; 8];
+            for (lane, value) in terms.iter_mut().enumerate() {
+                let i = half * 8 + lane;
+                *value = term(minima[i], steps[i], a[i], b[i]);
+            }
+            for (lane, value) in lanes.iter_mut().zip(terms) {
+                *lane += value;
+            }
+        }
+    }
+    let mut lanes: [f32; 16] = pulp::cast(halves);
+    let tail = minima_tail.iter().zip(steps_tail).zip(a_tail).zip(b_tail);
+    for (lane, (((&min, &step), &a), &b)) in lanes.iter_mut().zip(tail) {
+        *lane += term(min, step, a, b);
+    }
+    reduce(lanes)
+}
+
+fn portable_l2(steps: &[f32], a: &[u8], b: &[u8]) -> f32 {
+    let mut halves = [[0.0f32; 8]; 2];
+    let (steps, steps_tail) = steps.as_chunks::<16>();
+    let (a, a_tail) = a.as_chunks::<16>();
+    let (b, b_tail) = b.as_chunks::<16>();
+    let term = |step: f32, a: u8, b: u8| {
+        let delta = (a as f32 - b as f32) * step;
+        delta * delta
+    };
+    for ((steps, a), b) in steps.iter().zip(a).zip(b) {
+        for (half, lanes) in halves.iter_mut().enumerate() {
+            let mut terms = [0.0f32; 8];
+            for (lane, value) in terms.iter_mut().enumerate() {
+                let i = half * 8 + lane;
+                *value = term(steps[i], a[i], b[i]);
+            }
+            for (lane, value) in lanes.iter_mut().zip(terms) {
+                *lane += value;
+            }
+        }
+    }
+    let mut lanes: [f32; 16] = pulp::cast(halves);
+    for (lane, ((&step, &a), &b)) in lanes.iter_mut().zip(steps_tail.iter().zip(a_tail).zip(b_tail)) {
+        *lane += term(step, a, b);
+    }
+    reduce(lanes)
+}
+
+/// The same kernels with explicit AVX2 operations: lanes 0-7 and 8-15 of each
+/// 16-element chunk in two registers, no fused multiply-add.
+#[cfg(target_arch = "x86_64")]
+mod avx2 {
+    use core::arch::x86_64::{__m128i, __m256, __m256i};
+
+    use pulp::x86::V3;
+
+    use crate::config::Metric;
+
+    pub(super) struct CodePair<'a> {
+        pub simd: V3,
+        pub metric: Metric,
+        pub minima: &'a [f32],
+        pub steps: &'a [f32],
+        pub a: &'a [u8],
+        pub b: &'a [u8],
+    }
+
+    impl pulp::WithSimd for CodePair<'_> {
+        type Output = f32;
+
+        #[inline(always)]
+        fn with_simd<S: pulp::Simd>(self, _: S) -> f32 {
+            match self.metric {
+                Metric::Cosine | Metric::Dot => dot(self.simd, self.minima, self.steps, self.a, self.b),
+                Metric::L2 => -l2(self.simd, self.steps, self.a, self.b),
+            }
+        }
+    }
+
+    /// [`CodePair`] for one code against many, decoding the shared code once.
+    pub(super) struct CodesMany<'a> {
+        pub simd: V3,
+        pub metric: Metric,
+        pub minima: &'a [f32],
+        pub steps: &'a [f32],
+        pub a: &'a [u8],
+        pub codes: &'a [u8],
+        pub ids: &'a [u32],
+        pub scores: &'a mut Vec<f32>,
+    }
+
+    impl pulp::WithSimd for CodesMany<'_> {
+        type Output = ();
+
+        #[inline(always)]
+        fn with_simd<S: pulp::Simd>(self, _: S) {
+            let len = self.a.len();
+            let code = |id: u32| {
+                let start = id as usize * len;
+                &self.codes[start..start + len]
+            };
+            match self.metric {
+                Metric::Cosine | Metric::Dot => {
+                    // The same operations as the pair kernel's `x`.
+                    let decoded: Vec<f32> = (self.minima.iter().zip(self.steps).zip(self.a))
+                        .map(|((&min, &step), &a)| min + step * a as f32)
+                        .collect();
+                    for &id in self.ids {
+                        let b = code(id);
+                        let score = dot_decoded(self.simd, &decoded, self.minima, self.steps, b);
+                        self.scores.push(score);
+                    }
+                }
+                Metric::L2 => {
+                    for &id in self.ids {
+                        self.scores.push(-l2(self.simd, self.steps, self.a, code(id)));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Bytes `0..8` and `8..16` of a chunk as 32-bit integers.
+    #[inline(always)]
+    fn widen(simd: V3, chunk: &[u8; 16]) -> (__m256i, __m256i) {
+        let bytes: __m128i = pulp::cast(*chunk);
+        let high = simd.sse2._mm_unpackhi_epi64(bytes, bytes);
+        (
+            simd.avx2._mm256_cvtepu8_epi32(bytes),
+            simd.avx2._mm256_cvtepu8_epi32(high),
+        )
+    }
+
+    #[inline(always)]
+    fn halves(chunk: &[f32; 16]) -> (__m256, __m256) {
+        let [low, high]: [[f32; 8]; 2] = pulp::cast(*chunk);
+        (pulp::cast(low), pulp::cast(high))
+    }
+
+    #[inline(always)]
+    fn lanes(low: __m256, high: __m256) -> [f32; 16] {
+        pulp::cast([
+            pulp::cast::<__m256, [f32; 8]>(low),
+            pulp::cast::<__m256, [f32; 8]>(high),
+        ])
+    }
+
+    #[inline(always)]
+    fn dot(simd: V3, minima: &[f32], steps: &[f32], a: &[u8], b: &[u8]) -> f32 {
+        let avx = simd.avx;
+        let (minima, minima_tail) = minima.as_chunks::<16>();
+        let (steps, steps_tail) = steps.as_chunks::<16>();
+        let (a, a_tail) = a.as_chunks::<16>();
+        let (b, b_tail) = b.as_chunks::<16>();
+        let mut low = avx._mm256_setzero_ps();
+        let mut high = avx._mm256_setzero_ps();
+        for (((minima, steps), a), b) in minima.iter().zip(steps).zip(a).zip(b) {
+            let (min_low, min_high) = halves(minima);
+            let (step_low, step_high) = halves(steps);
+            let (a_low, a_high) = widen(simd, a);
+            let (b_low, b_high) = widen(simd, b);
+            let term = |min, step, a, b| {
+                let x = avx._mm256_add_ps(min, avx._mm256_mul_ps(step, avx._mm256_cvtepi32_ps(a)));
+                let y = avx._mm256_add_ps(min, avx._mm256_mul_ps(step, avx._mm256_cvtepi32_ps(b)));
+                avx._mm256_mul_ps(x, y)
+            };
+            low = avx._mm256_add_ps(low, term(min_low, step_low, a_low, b_low));
+            high = avx._mm256_add_ps(high, term(min_high, step_high, a_high, b_high));
+        }
+        let mut lanes = lanes(low, high);
+        let tail = minima_tail.iter().zip(steps_tail).zip(a_tail).zip(b_tail);
+        for (lane, (((&min, &step), &a), &b)) in lanes.iter_mut().zip(tail) {
+            *lane += (min + step * a as f32) * (min + step * b as f32);
+        }
+        super::reduce(lanes)
+    }
+
+    /// [`dot`] with `a` already decoded (`min + step * a`).
+    #[inline(always)]
+    fn dot_decoded(simd: V3, decoded: &[f32], minima: &[f32], steps: &[f32], b: &[u8]) -> f32 {
+        let avx = simd.avx;
+        let (decoded, decoded_tail) = decoded.as_chunks::<16>();
+        let (minima, minima_tail) = minima.as_chunks::<16>();
+        let (steps, steps_tail) = steps.as_chunks::<16>();
+        let (b, b_tail) = b.as_chunks::<16>();
+        let mut low = avx._mm256_setzero_ps();
+        let mut high = avx._mm256_setzero_ps();
+        for (((decoded, minima), steps), b) in decoded.iter().zip(minima).zip(steps).zip(b) {
+            let (x_low, x_high) = halves(decoded);
+            let (min_low, min_high) = halves(minima);
+            let (step_low, step_high) = halves(steps);
+            let (b_low, b_high) = widen(simd, b);
+            let term = |x, min, step, b| {
+                let y = avx._mm256_add_ps(min, avx._mm256_mul_ps(step, avx._mm256_cvtepi32_ps(b)));
+                avx._mm256_mul_ps(x, y)
+            };
+            low = avx._mm256_add_ps(low, term(x_low, min_low, step_low, b_low));
+            high = avx._mm256_add_ps(high, term(x_high, min_high, step_high, b_high));
+        }
+        let mut lanes = lanes(low, high);
+        let tail = decoded_tail.iter().zip(minima_tail).zip(steps_tail).zip(b_tail);
+        for (lane, (((&x, &min), &step), &b)) in lanes.iter_mut().zip(tail) {
+            *lane += x * (min + step * b as f32);
+        }
+        super::reduce(lanes)
+    }
+
+    #[inline(always)]
+    fn l2(simd: V3, steps: &[f32], a: &[u8], b: &[u8]) -> f32 {
+        let avx = simd.avx;
+        let (steps, steps_tail) = steps.as_chunks::<16>();
+        let (a, a_tail) = a.as_chunks::<16>();
+        let (b, b_tail) = b.as_chunks::<16>();
+        let mut low = avx._mm256_setzero_ps();
+        let mut high = avx._mm256_setzero_ps();
+        for ((steps, a), b) in steps.iter().zip(a).zip(b) {
+            let (step_low, step_high) = halves(steps);
+            let (a_low, a_high) = widen(simd, a);
+            let (b_low, b_high) = widen(simd, b);
+            // Byte differences are small integers: subtracting them as integers
+            // equals subtracting their exact f32 conversions.
+            let term = |step, a, b| {
+                let difference = avx._mm256_cvtepi32_ps(simd.avx2._mm256_sub_epi32(a, b));
+                let delta = avx._mm256_mul_ps(difference, step);
+                avx._mm256_mul_ps(delta, delta)
+            };
+            low = avx._mm256_add_ps(low, term(step_low, a_low, b_low));
+            high = avx._mm256_add_ps(high, term(step_high, a_high, b_high));
+        }
+        let mut lanes = lanes(low, high);
+        for (lane, ((&step, &a), &b)) in lanes.iter_mut().zip(steps_tail.iter().zip(a_tail).zip(b_tail)) {
+            let delta = (a as f32 - b as f32) * step;
+            *lane += delta * delta;
+        }
+        super::reduce(lanes)
+    }
+}
+
+#[inline(always)]
+fn reduce(mut lanes: [f32; 16]) -> f32 {
+    for width in [8, 4, 2, 1] {
+        for lane in 0..width {
+            lanes[lane] += lanes[lane + width];
+        }
+    }
+    lanes[0]
+}
+
 /// Independent lanes make the small byte-to-f32 kernels amenable to vectorization,
 /// while a fixed reduction order keeps estimates deterministic on every thread.
 #[inline]
@@ -244,12 +547,7 @@ fn sum_terms(dim: usize, term: impl Fn(usize) -> f32) -> f32 {
     for (lane, acc) in lanes.iter_mut().take(dim - end).enumerate() {
         *acc += term(end + lane);
     }
-    for width in [8, 4, 2, 1] {
-        for lane in 0..width {
-            lanes[lane] += lanes[lane + width];
-        }
-    }
-    lanes[0]
+    reduce(lanes)
 }
 
 #[cfg(test)]
@@ -257,6 +555,59 @@ mod tests {
     use super::*;
 
     const METRICS: [Metric; 3] = [Metric::Cosine, Metric::Dot, Metric::L2];
+
+    #[test]
+    fn every_code_kernel_equals_the_scalar_formula_bit_for_bit() {
+        // The formula before vectorization: one `sum_terms` per score.
+        let reference = |metric, minima: &[f32], steps: &[f32], a: &[u8], b: &[u8]| match metric {
+            Metric::Cosine | Metric::Dot => sum_terms(minima.len(), |i| {
+                let x = minima[i] + steps[i] * a[i] as f32;
+                let y = minima[i] + steps[i] * b[i] as f32;
+                x * y
+            }),
+            Metric::L2 => -sum_terms(minima.len(), |i| {
+                let delta = (a[i] as f32 - b[i] as f32) * steps[i];
+                delta * delta
+            }),
+        };
+        let mut rng = crate::util::SplitMix64::new(7);
+        for dim in (1..=40).chain([63, 64, 100, 255, 256, 1024, 1027]) {
+            let n = 24;
+            let codes: Vec<u8> = (0..n * dim).map(|_| rng.next_u64() as u8).collect();
+            let mut params: Vec<f32> = (0..dim)
+                .map(|_| (rng.below(2001) as f32 - 1000.0) / 997.0)
+                .collect();
+            params.extend((0..dim).map(|i| {
+                // Include constant dimensions (zero steps) and tiny steps.
+                [0.0, 1e-7, 0.013, 0.5][(i + rng.below(4) as usize) % 4]
+            }));
+            for metric in METRICS {
+                let codec = Int8Codec {
+                    metric,
+                    dim,
+                    params: params.clone(),
+                };
+                let (minima, steps) = params.split_at(dim);
+                let code = |i: usize| &codes[i * dim..(i + 1) * dim];
+                let ids: Vec<u32> = (0..n as u32).rev().chain([3, 3]).collect();
+                for i in 0..n {
+                    let mut many = Vec::new();
+                    codec.score_codes_many(code(i), &codes, &ids, &mut many);
+                    for (&j, &batched) in ids.iter().zip(&many) {
+                        let (a, b) = (code(i), code(j as usize));
+                        let expected = reference(metric, minima, steps, a, b).to_bits();
+                        assert_eq!(codec.score_codes(a, b).to_bits(), expected);
+                        assert_eq!(batched.to_bits(), expected);
+                        let portable = match metric {
+                            Metric::L2 => -portable_l2(steps, a, b),
+                            _ => portable_dot(minima, steps, a, b),
+                        };
+                        assert_eq!(portable.to_bits(), expected, "{metric:?} {dim}");
+                    }
+                }
+            }
+        }
+    }
 
     fn encode(codec: &Int8Codec, vector: &[f32]) -> Vec<u8> {
         let mut code = vec![0; codec.code_len()];

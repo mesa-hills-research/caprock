@@ -10,6 +10,9 @@ use crate::util::mix64;
 use super::{Info, RecordSource, SegmentBuild, SegmentInfo};
 
 const BUFFER_BYTES: usize = 64 * 1024;
+/// Most bytes of full-precision vectors held at once by a graph build's parallel
+/// vector pass (well within a graph build's allowance).
+const BLOCK_BYTES: usize = 16 << 20;
 
 // Permutation and key index coexist with training, language sorting, or graph
 // construction. String bytes are streamed, not copied into build RAM.
@@ -138,7 +141,10 @@ pub(super) fn write(
         SectionKind::Vectors
     };
     section(&mut writer, vector_kind, |out| {
-        for (ordinal, &row) in order.iter().enumerate() {
+        if build.graph {
+            return encode_blocks(source, &order, &codec, dim, build.threads, out, &mut graph_codes);
+        }
+        for &row in &order {
             source.read_vector(row as usize, &mut vector)?;
             // Stored-form vectors must not be normalized a second time.
             crate::distance::validate(&vector, dim)?;
@@ -146,10 +152,6 @@ pub(super) fn write(
                 *bytes = value.to_le_bytes();
             }
             out.push(&vector_bytes)?;
-            if build.graph {
-                let start = ordinal * codec.code_len();
-                codec.encode(&vector, &mut graph_codes[start..start + codec.code_len()]);
-            }
         }
         Ok(())
     })?;
@@ -167,15 +169,16 @@ pub(super) fn write(
             })?;
         }
     }
-    // Graph workspace and language-sort workspace do not coexist. Bound worker
-    // scratch independently of the requested thread count, as the allowance above
-    // covers at most eight simultaneous searches. This cannot change graph bytes.
+    // Graph workspace and language-sort workspace do not coexist. A worker's
+    // scratch is a visited bitset (n/8 bytes) and buffers bounded by the beam and
+    // degree, small next to the per-node allowance above even with every hardware
+    // thread at work. The thread count cannot change graph bytes.
     if build.graph {
         let AnnKind::Vamana(params) = config.ann.kind else {
             unreachable!()
         };
         let graph = with_codec!(&codec, c => crate::vamana::build_graph(
-            c, &graph_codes, &params, seed, build.threads.min(8)
+            c, &graph_codes, &params, seed, build.threads
         ))?;
         // Stream Graph's documented representation, avoiding a second adjacency.
         section(&mut writer, SectionKind::Graph, |out| {
@@ -198,6 +201,79 @@ pub(super) fn write(
         has_graph: build.graph,
         bytes,
     })
+}
+
+/// The vectors of a graph build, in `order`, as the vector section's bytes and as
+/// codes: read, validated and encoded in parallel blocks, written in order. The
+/// error of the first failing ordinal is returned, as a sequential pass would.
+fn encode_blocks(
+    source: &dyn RecordSource,
+    order: &[u32],
+    codec: &AnyCodec,
+    dim: usize,
+    threads: usize,
+    out: &mut Buffer<'_>,
+    codes: &mut [u8],
+) -> Result<()> {
+    let code_len = codec.code_len();
+    let workers = threads
+        .min(std::thread::available_parallelism().map_or(1, usize::from))
+        .max(1);
+    let block = (BLOCK_BYTES / (4 * dim)).max(1);
+    let mut bytes = vec![0u8; block.min(order.len()) * dim * 4];
+    for (rows, codes) in order.chunks(block).zip(codes.chunks_mut(block * code_len)) {
+        let bytes = &mut bytes[..rows.len() * dim * 4];
+        let per = rows.len().div_ceil(workers);
+        let mut parts = rows
+            .chunks(per)
+            .zip(bytes.chunks_mut(per * dim * 4))
+            .zip(codes.chunks_mut(per * code_len));
+        let first = parts.next().expect("a block is never empty");
+        std::thread::scope(|scope| {
+            let mut handles = Vec::new();
+            for ((rows, bytes), codes) in parts {
+                let worker = std::thread::Builder::new()
+                    .spawn_scoped(scope, move || encode_rows(source, rows, codec, dim, bytes, codes))
+                    .map_err(|error| Error::io("", error))?;
+                handles.push(worker);
+            }
+            let ((rows, bytes), codes) = first;
+            let mut result = encode_rows(source, rows, codec, dim, bytes, codes);
+            for handle in handles {
+                let part = handle
+                    .join()
+                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
+                result = result.and(part);
+            }
+            result
+        })?;
+        out.push(bytes)?;
+    }
+    Ok(())
+}
+
+fn encode_rows(
+    source: &dyn RecordSource,
+    rows: &[u32],
+    codec: &AnyCodec,
+    dim: usize,
+    bytes: &mut [u8],
+    codes: &mut [u8],
+) -> Result<()> {
+    let mut vector = vec![0.0; dim];
+    let parts = bytes
+        .chunks_exact_mut(dim * 4)
+        .zip(codes.chunks_exact_mut(codec.code_len()));
+    for (&row, (bytes, code)) in rows.iter().zip(parts) {
+        source.read_vector(row as usize, &mut vector)?;
+        // Stored-form vectors must not be normalized a second time.
+        crate::distance::validate(&vector, dim)?;
+        for (&value, bytes) in vector.iter().zip(bytes.as_chunks_mut::<4>().0) {
+            *bytes = value.to_le_bytes();
+        }
+        codec.encode(&vector, code);
+    }
+    Ok(())
 }
 
 fn validate_metadata(source: &dyn RecordSource, order: &[u32]) -> Result<()> {

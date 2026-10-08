@@ -30,6 +30,9 @@ pub fn mix64(z: u64) -> u64 {
     z ^ (z >> 31)
 }
 
+/// SplitMix64's state increment.
+const GAMMA: u64 = 0x9e37_79b9_7f4a_7c15;
+
 /// SplitMix64: `state += 0x9E3779B97F4A7C15` (wrapping), output [`mix64`]`(state)`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SplitMix64 {
@@ -42,8 +45,14 @@ impl SplitMix64 {
     }
 
     pub fn next_u64(&mut self) -> u64 {
-        self.state = self.state.wrapping_add(0x9e37_79b9_7f4a_7c15);
+        self.state = self.state.wrapping_add(GAMMA);
         mix64(self.state)
+    }
+
+    /// Skips `draws` outputs in O(1): the state that many [`SplitMix64::next_u64`]
+    /// calls would reach. Lets workers start at their share of a fixed draw sequence.
+    pub fn advance(&mut self, draws: u64) {
+        self.state = self.state.wrapping_add(GAMMA.wrapping_mul(draws));
     }
 
     /// Uniform in `0..n` (`n > 0`): `next_u64() % n`.
@@ -217,6 +226,20 @@ mod tests {
                 assert!(std::panic::catch_unwind(|| Bitset::new(len).set(i)).is_err());
                 assert!(std::panic::catch_unwind(|| Bitset::new(len).clear(i)).is_err());
             }
+        }
+    }
+
+    #[test]
+    fn advance_skips_exactly_that_many_draws() {
+        for (seed, draws) in [(0, 0), (1, 1), (u64::MAX, 3), (42, 1000)] {
+            let mut sequential = SplitMix64::new(seed);
+            for _ in 0..draws {
+                sequential.next_u64();
+            }
+            let mut skipped = SplitMix64::new(seed);
+            skipped.advance(draws);
+            assert_eq!(skipped, sequential);
+            assert_eq!(skipped.next_u64(), sequential.next_u64());
         }
     }
 

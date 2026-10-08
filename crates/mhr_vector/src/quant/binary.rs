@@ -146,6 +146,22 @@ impl BinaryCodec {
         self.dim.div_ceil(64) * 8
     }
 
+    /// The angular estimate between two codes whose sign bits differ in `hamming`
+    /// places.
+    #[inline(always)]
+    fn score_hamming(&self, a: &[u8], b: &[u8], hamming: usize) -> f32 {
+        let (norm_a, centre_a) = self.corrections(a);
+        let (norm_b, centre_b) = self.corrections(b);
+        let dot = (norm_a * norm_b) * self.correlations[hamming];
+        // Group symmetric terms before adding the others, so swapping operands
+        // cannot change the rounding (including the last bit).
+        match self.metric {
+            Metric::Cosine | Metric::Dot => self.centre_norm2 + (centre_a + centre_b) + dot,
+            Metric::L2 => -(norm_a * norm_a + norm_b * norm_b) + 2.0 * dot,
+        }
+    }
+
+    #[inline(always)]
     fn corrections(&self, code: &[u8]) -> (f32, f32) {
         let offset = self.bit_bytes();
         let norm = f32::from_le_bytes(code[offset..offset + 4].try_into().unwrap());
@@ -246,31 +262,23 @@ impl Codec for BinaryCodec {
 
     fn score_codes(&self, a: &[u8], b: &[u8]) -> f32 {
         let bit_bytes = self.bit_bytes();
-        let mut hamming = 0usize;
-        for (j, (a, b)) in a[..bit_bytes]
-            .as_chunks::<8>()
-            .0
-            .iter()
-            .zip(b[..bit_bytes].as_chunks::<8>().0)
-            .enumerate()
-        {
-            let mut different = u64::from_le_bytes(*a) ^ u64::from_le_bytes(*b);
-            if j + 1 == bit_bytes / 8 && !self.dim.is_multiple_of(64) {
-                different &= (1u64 << (self.dim % 64)) - 1;
-            }
-            hamming += different.count_ones() as usize;
-        }
-        let (norm_a, centre_a) = self.corrections(a);
-        let (norm_b, centre_b) = self.corrections(b);
-        let dot = (norm_a * norm_b) * self.correlations[hamming];
-        // Group symmetric terms before adding the others, so swapping operands
-        // cannot change the rounding (including the last bit).
-        match self.metric {
-            Metric::Cosine | Metric::Dot => {
-                self.centre_norm2 + (centre_a + centre_b) + dot
-            }
-            Metric::L2 => -(norm_a * norm_a + norm_b * norm_b) + 2.0 * dot,
-        }
+        let hamming = crate::quant::dispatch(Hamming {
+            a: &a[..bit_bytes],
+            b: &b[..bit_bytes],
+            dim: self.dim,
+        });
+        self.score_hamming(a, b, hamming)
+    }
+
+    fn score_codes_many(&self, a: &[u8], codes: &[u8], ids: &[u32], scores: &mut Vec<f32>) {
+        // One dispatch for the whole batch.
+        crate::quant::dispatch(HammingMany {
+            codec: self,
+            a,
+            codes,
+            ids,
+            scores,
+        })
     }
 
     fn to_bytes(&self) -> Vec<u8> {
@@ -280,6 +288,64 @@ impl Codec for BinaryCodec {
         bytes.extend_from_slice(&metric_tag(self.metric).to_le_bytes());
         bytes.extend_from_slice(&f32s_to_le(&self.params));
         bytes
+    }
+}
+
+/// The Hamming distance of two codes' first `dim` sign bits (whole words; padding
+/// bits are masked, so a code's padding never counts). Integer arithmetic: exact in
+/// any order, with or without a population-count instruction.
+#[inline(always)]
+fn hamming(a: &[u8], b: &[u8], dim: usize) -> usize {
+    let words = a.as_chunks::<8>().0.iter().zip(b.as_chunks::<8>().0);
+    let last = dim.div_ceil(64) - 1;
+    let mut hamming = 0;
+    for (j, (a, b)) in words.enumerate() {
+        let mut different = u64::from_le_bytes(*a) ^ u64::from_le_bytes(*b);
+        if j == last && !dim.is_multiple_of(64) {
+            different &= (1u64 << (dim % 64)) - 1;
+        }
+        hamming += different.count_ones() as usize;
+    }
+    hamming
+}
+
+struct Hamming<'a> {
+    a: &'a [u8],
+    b: &'a [u8],
+    dim: usize,
+}
+
+impl pulp::WithSimd for Hamming<'_> {
+    type Output = usize;
+
+    #[inline(always)]
+    fn with_simd<S: pulp::Simd>(self, _: S) -> usize {
+        hamming(self.a, self.b, self.dim)
+    }
+}
+
+struct HammingMany<'a> {
+    codec: &'a BinaryCodec,
+    a: &'a [u8],
+    codes: &'a [u8],
+    ids: &'a [u32],
+    scores: &'a mut Vec<f32>,
+}
+
+impl pulp::WithSimd for HammingMany<'_> {
+    type Output = ();
+
+    #[inline(always)]
+    fn with_simd<S: pulp::Simd>(self, _: S) {
+        let codec = self.codec;
+        let len = codec.code_len();
+        let bit_bytes = codec.bit_bytes();
+        for &id in self.ids {
+            let start = id as usize * len;
+            let b = &self.codes[start..start + len];
+            let hamming = hamming(&self.a[..bit_bytes], &b[..bit_bytes], codec.dim);
+            self.scores.push(codec.score_hamming(self.a, b, hamming));
+        }
     }
 }
 
