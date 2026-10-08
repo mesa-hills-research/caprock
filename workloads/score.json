@@ -1,11 +1,28 @@
 {
-  "name": "score-v2",
-  "description": "The speed gate's workload (SWARM-PACK.md, 'The score'): the geometric mean of two parts' single-thread QPS, each at the smallest beam whose recall@10 reaches 0.95 with the default vamana-int8 configuration, over all base vectors and the first 2,000 held-out queries. The parts are code-voyagecode4-200k (arko_index chunks of 12 code checkouts in arko_index's 8 languages, voyage-code-4) and docs-voyage4-200k (Cloudflare and MDN documentation, voyage-4), both 1024 dimensions (docs/datasets.md). Frozen: changing this file changes the score's identity.",
+  "name": "score-v3",
+  "description": "The speed gate's workload (owner, 2026-10-08: arko_index defaults to exact flat search): the geometric mean of two parts' single-thread QPS of flat search with int8 codes (flat-int8), which must reach recall@10 0.95, over all base vectors. The parts are code-voyagecode4-200k (arko_index chunks of 12 code checkouts, voyage-code-4; first 1,000 held-out queries) and docs-voyage4-200k (Cloudflare and MDN documentation, voyage-4; first 2,000 queries), both 1024 dimensions (docs/datasets.md). Frozen: changing this file changes the score's identity.",
   "parts": [
-    {"dataset": "code-voyagecode4-200k", "queries": 2000, "config": "vamana-int8", "k": 10, "recall_target": 0.95},
-    {"dataset": "docs-voyage4-200k", "queries": 2000, "config": "vamana-int8", "k": 10, "recall_target": 0.95}
+    {
+      "dataset": "code-voyagecode4-200k",
+      "queries": 1000,
+      "config": "flat-int8",
+      "k": 10,
+      "recall_target": 0.95
+    },
+    {
+      "dataset": "docs-voyage4-200k",
+      "queries": 2000,
+      "config": "flat-int8",
+      "k": 10,
+      "recall_target": 0.95
+    }
   ],
-  "build": {"threads": 16, "budget": 2147483648, "batch": 10000, "commit_every": 80000},
-  "timed_repeats": 3,
+  "build": {
+    "threads": 16,
+    "budget": 2147483648,
+    "batch": 10000,
+    "commit_every": 80000
+  },
+  "timed_repeats": 1,
   "recall_threads": 4
 }
