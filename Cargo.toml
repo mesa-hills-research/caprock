@@ -1,13 +1,13 @@
 [workspace]
 resolver = "3"
-members = ["crates/mhr_vector", "crates/mhr_vector_oracle", "crates/mhr_vector_bench"]
+members = ["crates/caprock", "crates/caprock_oracle", "crates/caprock_bench"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.89"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/mesa-hills-research/mhr_vector"
+repository = "https://github.com/mesa-hills-research/caprock"
 publish = false
 
 # Every dependency is pure Rust with a safe API: no -sys crates and no build scripts

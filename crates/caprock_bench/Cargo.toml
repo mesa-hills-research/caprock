@@ -1,0 +1,29 @@
+[package]
+name = "caprock_bench"
+description = "The vector store's benchmark harness (datasets, ground truth, build, query, update and open measurements) and conformance checks"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "caprock_bench"
+path = "src/main.rs"
+
+[[bin]]
+name = "caprock_conform"
+path = "src/bin/caprock_conform.rs"
+
+[dependencies]
+caprock = { path = "../caprock" }
+caprock_oracle = { path = "../caprock_oracle" }
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

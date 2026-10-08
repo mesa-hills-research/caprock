@@ -1,4 +1,4 @@
-# mhr_vector
+# Caprock
 
 A vector store for Rust, written in pure, safe Rust. It keeps compact codes of your
 vectors in memory and the full vectors on disk, answers top-k searches with exact
@@ -49,7 +49,7 @@ The crate is on GitHub for now:
 
 ```toml
 [dependencies]
-mhr_vector = { git = "https://github.com/mesa-hills-research/mhr_vector" }
+caprock = { git = "https://github.com/mesa-hills-research/caprock" }
 ```
 
 It uses the 2024 edition and needs Rust 1.89 or later.
@@ -57,11 +57,11 @@ It uses the 2024 edition and needs Rust 1.89 or later.
 ## Usage
 
 ```rust
-use mhr_vector::{
+use caprock::{
     AnnKind, Filter, IndexConfig, Metric, Op, Reader, Record, SearchParams, StoreOptions, Writer,
 };
 
-let dir = std::env::temp_dir().join("mhr_vector_quickstart");
+let dir = std::env::temp_dir().join("caprock_quickstart");
 let _ = std::fs::remove_dir_all(&dir);
 
 // int8 codes find candidates, full-precision vectors rescore them.
@@ -100,7 +100,7 @@ let reader = Reader::open(&dir, StoreOptions::default())?;
 assert_eq!(reader.snapshot().len(), 2);
 ```
 
-`cargo run -p mhr_vector --example quickstart` runs it.
+`cargo run -p caprock --example quickstart` runs it.
 
 ## Documentation
 
@@ -113,11 +113,11 @@ assert_eq!(reader.snapshot().len(), 2);
 
 ```sh
 cargo test --workspace --all-features
-cargo run --release -p mhr_vector_bench --bin mhr_vector_conform -- run
+cargo run --release -p caprock_bench --bin caprock_conform -- run
 ```
 
 The tests compare results with a brute-force reference implementation
-(`mhr_vector_oracle`), and most of them need the test-only `internals` feature. The second
+(`caprock_oracle`), and most of them need the test-only `internals` feature. The second
 command runs end-to-end checks of the store, each in its own process.
 
 ## License

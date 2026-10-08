@@ -93,15 +93,15 @@ AMD EPYC 9354P, loading and compacting these sets took:
 
 ## Running the benchmarks
 
-The harness, `mhr_vector_bench`, builds indexes from a dataset, measures them and writes
+The harness, `caprock_bench`, builds indexes from a dataset, measures them and writes
 `results.json` and `results.md`. `workloads/` holds the suites behind the tables above
 (`bench-flat.json` and `bench-vamana.json`, which expect the two sets as
 `code-voyagecode4-200k` and `docs-voyage4-200k`) and a small one to try first
 (`smoke.json`):
 
 ```sh
-cargo build --release -p mhr_vector_bench
-B=target/release/mhr_vector_bench
+cargo build --release -p caprock_bench
+B=target/release/caprock_bench
 $B synth --out datasets/synth-small --dim 32 --n 20000 --queries 200 --clusters 50
 $B run --suite workloads/smoke.json --out results/smoke
 ```
@@ -150,7 +150,7 @@ paths and languages. A suite lists the parts to measure:
 
 - **Configurations:** `exact`, `flat-int8`, `flat-binary`, `vamana-int8`,
   `vamana-binary` and `vamana-f32`, or an object with a `name` and the fields of
-  `ConfigSpec` in `crates/mhr_vector_bench/src/configs.rs` (codes, graph parameters,
+  `ConfigSpec` in `crates/caprock_bench/src/configs.rs` (codes, graph parameters,
   rescoring).
 - **Filters:** `path:<prefix>` and `lang:<language>` measure filtered search.
 - **`open`** times opening the index in a fresh process.
@@ -159,4 +159,4 @@ paths and languages. A suite lists the parts to measure:
   recall after the updates, after `maintain` and after `compact`.
 
 The first run computes exact ground truth for every filter and caches it in the dataset's
-folder. `mhr_vector_bench --help` lists the commands that run each step on its own.
+folder. `caprock_bench --help` lists the commands that run each step on its own.

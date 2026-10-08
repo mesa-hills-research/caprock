@@ -1,0 +1,16 @@
+[package]
+name = "caprock_oracle"
+description = "The reference implementation the vector store's tests compare against: a brute-force store with exact results, result checks and data generators"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

@@ -36,6 +36,37 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95832e849adfb21180ccb6826a99da14e5d266ae5c2e668e1602cf234f153797"
 
 [[package]]
+name = "caprock"
+version = "0.1.0"
+dependencies = [
+ "caprock_oracle",
+ "crc32fast",
+ "pulp",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "caprock_bench"
+version = "0.1.0"
+dependencies = [
+ "caprock",
+ "caprock_oracle",
+ "proptest",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "caprock_oracle"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -124,37 +155,6 @@ name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
-
-[[package]]
-name = "mhr_vector"
-version = "0.1.0"
-dependencies = [
- "crc32fast",
- "mhr_vector_oracle",
- "pulp",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "mhr_vector_bench"
-version = "0.1.0"
-dependencies = [
- "mhr_vector",
- "mhr_vector_oracle",
- "proptest",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "mhr_vector_oracle"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
-]
 
 [[package]]
 name = "num-complex"
