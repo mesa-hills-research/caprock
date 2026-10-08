@@ -29,8 +29,6 @@ pub struct BinaryCodec {
 /// A binary-prepared query.
 #[derive(Debug, Clone)]
 pub struct BinaryQuery {
-    /// The query's sign bits, packed like codes.
-    pub bits: Vec<u64>,
     /// Sixteen signed sums per four dimensions, for asymmetric lookup scoring.
     pub values: Vec<f32>,
     /// `q . centre` for dot/cosine, or the negated centred squared norm for L2.
@@ -222,16 +220,12 @@ impl Codec for BinaryCodec {
 
     fn prepare(&self, query: &[f32]) -> BinaryQuery {
         assert_eq!(query.len(), self.dim);
-        let mut bits = vec![0; self.dim.div_ceil(64)];
         let mut residual = vec![0.0; self.dim.div_ceil(4) * 4];
         let mut norm2 = 0.0f64;
         let mut centre_dot = 0.0f64;
         for (j, (&x, &c)) in query.iter().zip(&self.params).enumerate() {
             let r = f64::from(x) - f64::from(c);
             residual[j] = r as f32;
-            if r >= 0.0 {
-                bits[j / 64] |= 1 << (j % 64);
-            }
             norm2 += r * r;
             centre_dot += f64::from(x) * f64::from(c);
         }
@@ -248,7 +242,6 @@ impl Codec for BinaryCodec {
             }
         }
         BinaryQuery {
-            bits,
             values,
             constant: match self.metric {
                 Metric::Cosine | Metric::Dot => centre_dot as f32,
@@ -450,9 +443,6 @@ mod tests {
             assert_eq!(codec.score_codes(&code, &code), codec.score_codes(&code, &dirty));
             let q = codec.prepare(&vector);
             assert_eq!(codec.score(&q, &code), codec.score(&q, &dirty));
-            for (j, &word) in q.bits.iter().enumerate() {
-                assert_eq!(word, u64::from_le_bytes(code[j * 8..j * 8 + 8].try_into().unwrap()));
-            }
         }
     }
 

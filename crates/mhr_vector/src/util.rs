@@ -10,6 +10,7 @@ use std::collections::BTreeSet;
 /// A stable 64-bit hash of `bytes`: FNV-1a 64 (offset basis `0xcbf29ce484222325` xor
 /// `seed`, prime `0x100000001b3`, one byte at a time), then the SplitMix64 finalizer
 /// ([`mix64`]).
+#[cfg(any(test, feature = "internals"))]
 pub fn stable_hash(bytes: &[u8], seed: u64) -> u64 {
     let mut hash = 0xcbf2_9ce4_8422_2325 ^ seed;
     for &byte in bytes {
@@ -103,6 +104,7 @@ impl Bitset {
         self.len
     }
 
+    #[cfg(feature = "internals")]
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
@@ -135,6 +137,7 @@ impl Bitset {
     }
 
     /// The set bits, ascending.
+    #[cfg(feature = "internals")]
     pub fn ones(&self) -> Vec<usize> {
         let mut ones = Vec::with_capacity(self.count_ones());
         for (i, &word) in self.words.iter().enumerate() {

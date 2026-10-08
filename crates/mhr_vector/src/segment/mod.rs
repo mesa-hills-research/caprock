@@ -46,6 +46,7 @@ pub trait RecordSource: Sync {
 }
 
 /// Records held in memory (tests, and small callers).
+#[cfg(any(test, feature = "internals"))]
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct MemoryRecords {
     pub dim: usize,
@@ -56,6 +57,7 @@ pub struct MemoryRecords {
     pub vectors: Vec<f32>,
 }
 
+#[cfg(any(test, feature = "internals"))]
 impl RecordSource for MemoryRecords {
     fn len(&self) -> usize {
         self.keys.len()

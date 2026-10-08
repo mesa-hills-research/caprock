@@ -38,6 +38,7 @@ impl Graph {
         }
     }
 
+    #[cfg(any(test, feature = "internals"))]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -52,6 +53,7 @@ impl Graph {
 
     /// The graph as saved in a segment's `Graph` section: degree (u32), entry (u32),
     /// node count (u64), then the adjacency (u32 each), little-endian.
+    #[cfg(any(test, feature = "internals"))]
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(16 + self.adjacency.len() * 4);
         bytes.extend_from_slice(&self.degree.to_le_bytes());

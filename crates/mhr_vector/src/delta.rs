@@ -232,6 +232,7 @@ impl Delta {
         true
     }
 
+    #[cfg(any(test, feature = "internals"))]
     pub fn contains(&self, key: &str) -> bool {
         self.keys.contains_key(key)
     }
@@ -329,6 +330,7 @@ impl DeltaView {
     }
 
     /// Memory held by this view (shared memory counted once per view).
+    #[cfg(any(test, feature = "internals"))]
     pub fn resident_bytes(&self) -> u64 {
         size_of::<Self>() as u64 + self.contents.resident_bytes()
     }

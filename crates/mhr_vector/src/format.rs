@@ -526,6 +526,7 @@ pub fn f32s_from_le(bytes: &[u8]) -> Option<Vec<f32>> {
     Some(words.iter().map(|&word| f32::from_le_bytes(word)).collect())
 }
 
+#[cfg(any(test, feature = "internals"))]
 pub fn u32s_to_le(values: &[u32]) -> Vec<u8> {
     values.iter().flat_map(|value| value.to_le_bytes()).collect()
 }
@@ -538,6 +539,7 @@ pub fn u32s_from_le(bytes: &[u8]) -> Option<Vec<u32>> {
     Some(words.iter().map(|&word| u32::from_le_bytes(word)).collect())
 }
 
+#[cfg(feature = "internals")]
 pub fn u16s_to_le(values: &[u16]) -> Vec<u8> {
     values.iter().flat_map(|value| value.to_le_bytes()).collect()
 }

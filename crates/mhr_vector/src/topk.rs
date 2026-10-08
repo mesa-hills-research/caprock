@@ -58,14 +58,17 @@ impl TopK {
         }
     }
 
+    #[cfg(feature = "internals")]
     pub fn k(&self) -> usize {
         self.k
     }
 
+    #[cfg(feature = "internals")]
     pub fn len(&self) -> usize {
         self.items.len()
     }
 
+    #[cfg(feature = "internals")]
     pub fn is_empty(&self) -> bool {
         self.items.is_empty()
     }
