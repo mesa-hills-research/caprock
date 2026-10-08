@@ -1,106 +1,127 @@
-# mhr_vector (groundwork)
+# mhr_vector
 
-A greenfield, pure-Rust, safe-Rust vector store for arko_index's dense search, to be
-built and optimized by an `agent_swarm` run. This repository holds the groundwork: the
-contract, an exact oracle, a benchmark harness, the crate skeleton and the unit plan. The
-store itself is not implemented yet: every function body in `crates/mhr_vector` is a
-`todo!("Unn ...")` stub.
+A vector store in pure, safe Rust, written for the dense search of arko_index, a code
+search index. It holds embeddings of code and documentation chunks, takes a file
+watcher's updates as they come, and answers top-k searches filtered by path or language.
 
-| Document | What it is |
-|---|---|
-| [REQUIREMENTS.md](REQUIREMENTS.md) | the behaviour contract, the design choices, the targets |
-| [UNITS.md](UNITS.md) / `units.json` | 19 units with scopes, dependencies and acceptance tests |
-| [SWARM-PACK.md](SWARM-PACK.md) | how the swarm runs it: gates, buckets, the score, the profile, stopping rules |
-| [HOST_OWNED.md](HOST_OWNED.md) | paths agents may not change |
-| [docs/datasets.md](docs/datasets.md) | the datasets, why the score uses Voyage sets, how they are built and what they cost |
+- **Flat and graph search.** Flat search scans compact codes of every vector and rescores
+  the best candidates at full precision. Vamana graphs (the DiskANN family) serve high
+  query rates on large indexes. Any index can also answer exactly.
+- **Exact scores.** int8 or binary codes stay in memory to find candidates, and the
+  full-precision vectors on disk rescore them, so every returned score is the exact one.
+- **Deterministic.** Scores follow a fixed summation order, ties break by key, and builds
+  write byte-identical files at any thread count.
+- **Incremental and crash-safe.** Upserts and deletes take effect as soon as `apply`
+  returns, and a commit switches to a new generation atomically. Readers in any number of
+  threads or processes search snapshots while one writer works.
+- **Pure, safe Rust.** Every crate has `#![forbid(unsafe_code)]`, and the runtime
+  dependencies are `serde`, `serde_json`, `thiserror`, `crc32fast` and `pulp` (runtime
+  SIMD dispatch).
+- **Embedding-aware.** An index records the embedding model its vectors come from, and an
+  embedding cache keeps vectors by content hash, so an unchanged chunk is embedded once.
 
-## Layout
+It was made by an AI agent swarm from a written contract, an exact oracle and an
+acceptance test per unit. [docs/development](docs/development/README.md) tells how.
 
-```text
-crates/mhr_vector          the store: public API + internal units (skeleton), tests/uNN_*.rs
-crates/mhr_vector_oracle   the exact oracle: canonical scores, filters, checks, generators,
-                           scenarios, the dataset format, batch ground truth
-crates/mhr_vector_bench    mhr_vector_bench (harness, score) and mhr_vector_conform (the
-                           conformance runner), property tests
-contract/signatures.txt    the frozen interface (scripts/signatures.py --check)
-workloads/                 score, build-score, guards, full, smoke suites (JSON)
-scripts/                   dataset download and conversion, the Voyage sets, box setup
-docs/                      details: the datasets
+## Flat or graph
+
+arko_index uses flat search with int8 codes by default. Its recall@10 was 1.0 on both sets
+below, a query costs one pass over the codes, and merging segments builds no graph. The
+Vamana graph is there for high-QPS serving, at about 34 times the flat query rate on the
+code set with recall@10 of 0.97. With the default configuration every segment of 20,000
+vectors or more gets one.
+
+## Speed
+
+Single-thread search, k = 10, on 1024-dimensional Voyage embeddings of 199,999 code chunks
+and 34,601 documentation chunks:
+
+| Search | Set | Recall@10 | Queries/s | p50 |
+|---|---|---:|---:|---:|
+| Flat, int8 codes | code | 1.000 | 13 | 75.8 ms |
+| Flat, int8 codes | docs | 1.000 | 73 | 13.8 ms |
+| Exact, f32 | code | 1.000 | 9.5 | 104 ms |
+| Vamana graph, int8 codes | code | 0.966 | 440 | 2.2 ms |
+| Vamana graph, int8 codes | docs | 0.999 | 794 | 1.1 ms |
+
+Measured on a 6-vCPU virtual machine on an Intel Core i9-13980HX. Graph builds write the
+same bytes at any thread count: on an AMD EPYC 9354P a graph over 50,000 code vectors took
+236.6 s on one thread and 18.9 s on 16. Every measurement, both machines and the method
+are in [docs/benchmarks.md](docs/benchmarks.md).
+
+## Installation
+
+The crate is on GitHub for now:
+
+```toml
+[dependencies]
+mhr_vector = { git = "https://github.com/mesa-hills-research/mhr_vector" }
 ```
 
-## Commands
+It uses the 2024 edition and needs Rust 1.89 or later.
 
-```sh
-cargo test -p mhr_vector_oracle                                    # the oracle's own tests (pass)
-cargo test -p mhr_vector --features internals --test u01_distance  # a unit's acceptance test
-cargo build --release -p mhr_vector_bench
-B=target/release/mhr_vector_bench; C=target/release/mhr_vector_conform
+## Usage
 
-$C list                                  # 56 conformance checks
-$C run --jobs 8                          # JSON lines; signatures like "todo: U17" for now
+```rust
+use mhr_vector::{
+    AnnKind, Filter, IndexConfig, Metric, Op, Reader, Record, SearchParams, StoreOptions, Writer,
+};
 
-$B synth --out datasets/synth-small --dim 32 --n 20000 --queries 200 --clusters 50
-$B gt --dataset synth-small --filters p10,p01,go
-$B run --suite workloads/smoke.json --out results/smoke --engine oracle   # the harness on the oracle
-$B prepare --workload workloads/smoke-score.json --index-root /tmp/idx --engine oracle
-$B score   --workload workloads/smoke-score.json --index-root /tmp/idx --engine oracle
+let dir = std::env::temp_dir().join("mhr_vector_quickstart");
+let _ = std::fs::remove_dir_all(&dir);
+
+// int8 codes find candidates, full-precision vectors rescore them.
+let mut config = IndexConfig::new(4, Metric::Cosine);
+config.ann.kind = AnnKind::Flat; // without this, large segments get a Vamana graph
+let mut writer = Writer::create(&dir, config, StoreOptions::default())?;
+
+writer.apply(&[
+    Op::Upsert(Record {
+        key: "lib-0",
+        vector: &[0.9, 0.1, 0.0, 0.2],
+        path: "src/lib.rs",
+        language: "rust",
+    }),
+    Op::Upsert(Record {
+        key: "intro-0",
+        vector: &[0.8, 0.0, 0.2, 0.1],
+        path: "docs/intro.md",
+        language: "markdown",
+    }),
+])?;
+
+// Searchable at once, before any commit.
+let query = [1.0, 0.1, 0.0, 0.1];
+let filter = Filter::path("src");
+let hits = writer
+    .snapshot()
+    .search(&query, 10, Some(&filter), &SearchParams::default())?;
+for hit in &hits {
+    println!("{:.4}  {}  {}", hit.score, hit.key, hit.path);
+}
+
+// Durable, and visible to readers in other processes.
+writer.commit(None)?;
+let reader = Reader::open(&dir, StoreOptions::default())?;
+assert_eq!(reader.snapshot().len(), 2);
 ```
 
-`--engine oracle` runs every measurement against the oracle itself: recall 1.0 and no
-violations by construction. That checks the harness. `--engine mhr` (the default) measures
-the store.
+`cargo run -p mhr_vector --example quickstart` runs it. With arko_index's embeddings,
+`IndexConfig::for_model(EmbeddingModel::voyage_code_4(1024))` takes the place of
+`IndexConfig::new` and records the model with the index.
 
-**What the harness measures**:
+## Documentation
 
-- build time and peak memory (in a child process);
-- insert and delete throughput, and `apply` latency for 100-record batches
-  (read-your-writes);
-- recall after updates, after `maintain` and after `compact`;
-- query latency (p50, p99) and QPS at 1 and N threads, at the default beam and at chosen
-  beams, filtered and unfiltered;
-- recall@k against the oracle, with every result rule checked;
-- disk size;
-- warm and cold open time (cold needs root to drop the page cache).
+- [Requirements](docs/requirements.md): the behaviour contract, from the score arithmetic
+  and filters to persistence, concurrency, determinism and memory.
+- [Benchmarks](docs/benchmarks.md): every measurement, the machines and the method.
+- [Datasets](docs/datasets.md): the Voyage sets of code and documentation, and how they
+  were built.
+- [Testing](docs/testing.md): the oracle, the acceptance and property tests, and the
+  conformance checks.
+- [Development](docs/development/README.md): the plan the agent swarm worked from.
 
-`run` writes `results.json` and `results.md`.
+## License
 
-## Datasets
-
-`datasets/` (ignored by git) holds converted sets in the raw format of
-`crates/mhr_vector_oracle/src/dataset.rs`: `dataset.json`, `base.f32`, `queries.f32`,
-optionally `meta.jsonl`, and cached ground truth in `gt/`.
-
-The score (score-v2) runs on two Voyage sets, embedded with the models arko_index uses:
-about 200,000 code chunks in 8 languages (voyage-code-4) and the Cloudflare and MDN
-documentation (voyage-4). [docs/datasets.md](docs/datasets.md) covers their sources,
-sampling and cost.
-
-| Script | Makes |
-|---|---|
-| `scripts/voyage_sets.sh [--dry-run]` | the score's sets, code-voyagecode4-200k and docs-voyage4-200k (about $7 of Voyage tokens) |
-| `scripts/build_voyage_set.py ... [--dry-run]` | a Voyage set from arko_index chunks of code checkouts and documentation folders |
-| `scripts/build_code_set.py ... [--dry-run]` | code-voyage4-1024: ~11.5k chunks of 11 pinned repositories (voyage-code-4) and 1,000 doc-comment queries, ≤ $0.34 |
-| `scripts/fetch_ann.py NAME... --out datasets [--max-base N]` | ann-benchmarks sets (h5py, numpy) |
-| `scripts/box_setup.sh` | the ann-benchmarks and synthetic sets, and the ground truth of every set present, on the box |
-| `mhr_vector_bench synth` | synthetic sets of any size |
-
-Locally only two small sets are kept: `glove-25-angular-100k` and `synth-small`.
-
-## Validation
-
-Every test here was run against a throwaway reference implementation of all 19 units,
-kept **outside** this repository (`~/Desktop/mhr-work/vector-validation/`; not for the
-swarm). It passes:
-
-- every acceptance test;
-- all 56 conformance checks;
-- the property tests;
-- the smoke suite through `--engine mhr`, with no violations.
-
-Two test bugs found that way were fixed. The oracle's ground truth matches
-ann-benchmarks' own neighbour lists (random-xs-20-angular: agreement 1.0 at k = 10).
-
-## Building
-
-Rust 1.89 or later; no C compiler; no `unsafe` (`#![forbid(unsafe_code)]`). Run `cargo fmt --all` and keep
-`cargo clippy --workspace --all-targets --all-features -- -D warnings` clean.
+MIT or Apache-2.0, at your option ([LICENSE-MIT](LICENSE-MIT),
+[LICENSE-APACHE](LICENSE-APACHE)).

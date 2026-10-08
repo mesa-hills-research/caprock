@@ -1,0 +1,13 @@
+{
+  "name": "bench-vamana",
+  "description": "docs/benchmarks.md: the default Vamana configuration (vamana-int8) on the two Voyage sets with the same queries as bench-flat, over a ladder of beams.",
+  "parts": [
+    {"dataset": "code-voyagecode4-200k", "queries": 1000, "config": "vamana-int8", "k": 10},
+    {"dataset": "docs-voyage4-200k", "queries": 2000, "config": "vamana-int8", "k": 10}
+  ],
+  "build": {"threads": 6, "budget": 2147483648, "batch": 10000, "commit_every": 80000},
+  "timed_repeats": 3,
+  "recall_threads": 6,
+  "qps_threads": [1, 6],
+  "beams": [16, 24, 32, 40, 48, 56, 64, 80, 96, 128]
+}
