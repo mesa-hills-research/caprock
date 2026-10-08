@@ -7,7 +7,7 @@
 //! keeps them.
 //!
 //! Hot loops are generic over [`Codec`]; [`AnyCodec`] holds a segment's codec and
-//! [`with_codec!`] dispatches once per segment search, not once per vector.
+//! `with_codec!` dispatches once per segment search, not once per vector.
 
 pub mod binary;
 mod float;

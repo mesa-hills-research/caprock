@@ -297,7 +297,7 @@ impl Writer {
         self.make_job(plan)
     }
 
-    /// The first merge of a compaction ([`crate::merge::plan_compaction`]), if any.
+    /// The first merge of a compaction (see [`Writer::compact`]), if any.
     pub fn plan_compaction(&self) -> Option<MaintenanceJob> {
         let plan = merge::plan_compaction(
             &self.summaries(),
@@ -375,9 +375,8 @@ impl Writer {
         self.run_maintenance(false)
     }
 
-    /// Seals the delta, then merges until [`crate::merge::plan_compaction`] wants
-    /// nothing: the fewest segments the memory budget allows, no deletions left, graphs
-    /// on every large-enough segment.
+    /// Seals the delta, then merges until the index is compact: the fewest segments the
+    /// memory budget allows, no deletions left, graphs on every large-enough segment.
     pub fn compact(&mut self) -> Result<MaintainReport> {
         self.seal()?;
         self.publish_snapshot();
