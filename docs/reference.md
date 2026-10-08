@@ -98,8 +98,8 @@ vectors on disk to rescore them:
 | `F32` | `4 × dim` bytes, the vectors themselves | `k` |
 
 Codes are trained per segment on a sample of its vectors, with a fixed seed. Int8 keeps a
-minimum and a step per dimension. Binary keeps one sign bit per dimension, relative to a trained
-centre, plus two corrections per vector. With `F32` codes the vectors live in
+minimum and a step per dimension. Binary keeps one sign bit per dimension, relative to a
+trained centre, plus two corrections per vector. With `F32` codes the vectors live in
 memory and nothing is read from disk at search time.
 
 ## Flat or graph
@@ -199,8 +199,9 @@ Files carry a format version, and files of another version are refused with
   the parameters.
 - A segment's bytes depend only on its records, the configuration and its id, whatever
   the thread count.
-- The same sequence of calls produces the same files. Random choices come from a PRNG
-  seeded by `IndexConfig::seed` and the segment id, and no file holds a timestamp.
+- The same sequence of calls produces the same files, at any thread count. Random
+  choices come from a PRNG seeded by `IndexConfig::seed` and the segment id, and no file
+  holds a timestamp.
 
 ## Memory
 
@@ -269,7 +270,7 @@ example) and calls the embedding provider.
 
 ## Platforms and dependencies
 
-The store runs on Linux, macOS and Windows and needs Rust 1.89 or later. It reads files
-with positional reads, and every crate has `#![forbid(unsafe_code)]`. The runtime
+The store needs Rust 1.89 or later. It reads files with positional reads, with code
+paths for Unix and Windows, and every crate has `#![forbid(unsafe_code)]`. The runtime
 dependencies are `serde`, `serde_json`, `thiserror`, `crc32fast` and `pulp`, which picks
 SIMD kernels at run time.
