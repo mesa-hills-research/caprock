@@ -1,3 +1,0 @@
-# Host-side dataset tools only (never needed to build or test the crates).
-h5py>=3.10      # fetch_ann.py
-numpy>=1.26     # fetch_ann.py

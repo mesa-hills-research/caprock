@@ -1,6 +1,6 @@
 {
   "name": "smoke",
-  "description": "A quick local check of the harness and the store on small sets: a synthetic set (bench synth) and a glove-25 slice (scripts/fetch_ann.py --max-base 100000).",
+  "description": "A quick run on a small synthetic set (`synth --out datasets/synth-small --dim 32 --n 20000 --queries 200 --clusters 50`): exact and graph search, filters, a fresh-process open and updates.",
   "parts": [
     {"dataset": "synth-small", "config": "exact", "k": 10, "queries": 200, "filters": ["p10", "p01", "go"], "open": true},
     {"dataset": "synth-small", "config": "vamana-int8", "k": 10, "queries": 200, "filters": ["p10", "p01"]},
