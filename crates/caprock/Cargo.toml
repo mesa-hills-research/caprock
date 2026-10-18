@@ -1,12 +1,16 @@
 [package]
 name = "caprock"
-description = "A pure, safe Rust vector store: exact and Vamana graph search, int8 and binary codes with full-precision rescoring, path and language filters, crash-safe incremental updates"
+description = "A pure, safe Rust vector store with exact and Vamana graph search, int8 and binary codes rescored at full precision, path and language filters, and crash-safe incremental updates"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-publish.workspace = true
+readme = "../../README.md"
+keywords = ["vector", "search", "embeddings", "ann", "database"]
+categories = ["database-implementations", "algorithms"]
+# The tests compare with caprock_oracle, which stays in this workspace.
+exclude = ["tests/"]
 
 [features]
 # Test-only: makes the internal modules public (and hidden) for the integration tests

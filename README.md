@@ -45,11 +45,9 @@ the method are in [docs/benchmarks.md](docs/benchmarks.md).
 
 ## Installation
 
-The crate is on GitHub for now:
-
 ```toml
 [dependencies]
-caprock = { git = "https://github.com/mesa-hills-research/caprock" }
+caprock = "0.1.0"
 ```
 
 It uses the 2024 edition and needs Rust 1.89 or later.
