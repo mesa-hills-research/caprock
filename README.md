@@ -49,7 +49,7 @@ Single-thread search, k = 10, on 1024-dimensional embeddings of 199,999 code chu
 
 Measured on 6 vCPUs of an Intel Core i9-13980HX. Flat search reads every code on each
 query, about 65 ns per vector with int8 codes, and graph search visits a small part of the
-index. Graph builds run in parallel: on a 32-core AMD EPYC, a graph over 50,000 code
+index. Graph builds run in parallel. On a 32-core AMD EPYC, a graph over 50,000 code
 vectors took 236.6 s on one thread and 18.9 s on 16. Every measurement, the machines and
 the method are in [docs/benchmarks.md](docs/benchmarks.md).
 
@@ -112,9 +112,9 @@ assert_eq!(reader.snapshot().len(), 2);
 
 ## Documentation
 
-- [Reference](docs/reference.md): records, scores, filters, search, codes, updates and
-  maintenance, persistence, concurrency, memory and configuration.
-- [Benchmarks](docs/benchmarks.md): every measurement, the machines and the method, and
+- [Reference](docs/reference.md) covers records, scores, filters, search, codes, updates
+  and maintenance, persistence, concurrency, memory and configuration.
+- [Benchmarks](docs/benchmarks.md) has every measurement, the machines and the method, and
   how to benchmark your own data.
 
 ## Testing
