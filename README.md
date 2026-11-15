@@ -1,9 +1,19 @@
-# Caprock
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mesa-hills-research/caprock/main/assets/readme-header-dark.svg">
+    <img src="https://raw.githubusercontent.com/mesa-hills-research/caprock/main/assets/readme-header-light.svg" alt="Caprock" width="393">
+  </picture>
+</h1>
 
 A vector store for Rust, written in pure, safe Rust. It keeps compact codes of your
 vectors in memory and the full vectors on disk, answers top-k searches with exact
 scores, filters by path prefix and language, and takes updates as they come with
 crash-safe commits.
+
+<picture>
+  <source media="(prefers-reduced-motion: reduce)" srcset="https://raw.githubusercontent.com/mesa-hills-research/caprock/main/docs/images/caprock-demo.png">
+  <img src="https://raw.githubusercontent.com/mesa-hills-research/caprock/main/docs/images/caprock-demo.gif" alt="Three Caprock searches for code like Arko's wrap_lines function among 89,405 code chunks from eight repositories, the second kept to one repository and the third to Markdown, each listing its hits with exact scores and a search time under 8 ms." width="830">
+</picture>
 
 - **Pure, safe Rust.** Every crate has `#![forbid(unsafe_code)]`, and the runtime
   dependencies are `serde`, `serde_json`, `thiserror`, `crc32fast` and `pulp` (SIMD
